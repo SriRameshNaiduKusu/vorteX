@@ -3,7 +3,9 @@ __pycache__/
 *.pyo
 *.pyd
 *.log
+*.db
 venv/
+.env
 .idea/
 .vscode/
 *.egg-info/

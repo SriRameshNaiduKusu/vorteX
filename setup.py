@@ -1,32 +1,28 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="vorteX",
-    version="1.0.0",
-    author="Sri Ramesh Naidu",
-    description="An Advanced Asynchronous Reconnaissance Tool for Bug Bounty and Penetration Testing.",
-    long_description=open('README.md').read(),
-    long_description_content_type='text/markdown',
-    url="https://github.com/SriRameshNaiduKusu/vorteX",
+    name='vortex-recon',
+    version='1.0.0',
+    author='Sri Ramesh Naidu Kusu',
+    description='vorteX - Advanced Async Reconnaissance & Fuzzing Tool',
     packages=find_packages(),
+    py_modules=['main'],
     install_requires=[
-        "aiohttp",
-        "aiodns",
-        "requests",
-        "tqdm",
-        "beautifulsoup4",
-        "colorama",
-        "pyfiglet"
+        'requests',
+        'aiohttp',
+        'aiodns',
+        'tqdm',
+        'beautifulsoup4',
+        'pyfiglet',
+        'colorama'
     ],
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "Operating System :: OS Independent",
-        "Intended Audience :: Security Professionals",
-    ],
-    python_requires='>=3.7',
     entry_points={
         'console_scripts': [
-            'vortex = main:main',
-        ],
+            'vortex = main:main'
+        ]
     },
+    classifiers=[
+        'Programming Language :: Python :: 3',
+        'License :: OSI Approved :: MIT License',
+    ],
 )

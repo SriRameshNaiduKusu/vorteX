@@ -300,5 +300,7 @@ def main():
     else:
         print(f"{Fore.RED}[!] Invalid argument combination. Use -h for help.{Style.RESET_ALL}")
 
+
+
 if __name__ == "__main__":
     main()
