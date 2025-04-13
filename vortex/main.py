@@ -257,7 +257,7 @@ def parameter_discovery(url, method, headers_list, wordlist, output_file, output
     print(f"{Fore.CYAN}\n[✔] Completed - Found {len(found)} parameters.{Style.RESET_ALL}")
 
 # ===== CLI Parser =====
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="vorteX - Async Recon Tool")
 
     parser.add_argument("-d", "--domain", help="Target domain for subdomain enumeration")
@@ -299,3 +299,6 @@ if __name__ == "__main__":
 
     else:
         print(f"{Fore.RED}[!] Invalid argument combination. Use -h for help.{Style.RESET_ALL}")
+
+if __name__ == "__main__":
+    main()

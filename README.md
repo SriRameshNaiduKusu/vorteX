@@ -28,10 +28,24 @@ python3 main.py -h
 ```
 ---
 
+## (Optional) Install globally
+
+```
+git clone https://github.com/SriRameshNaiduKusu/vorteX.git
+cd vorteX
+pip install .
+```
+---
+
 ## Usage
 
 ```
 python main.py -h
+```
+>If Installed Globally
+
+```
+vortex -h
 ```
 
 ---
