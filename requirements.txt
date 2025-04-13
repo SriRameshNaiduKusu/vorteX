@@ -1,0 +1,7 @@
+aiohttp
+aiodns
+requests
+beautifulsoup4
+colorama
+pyfiglet
+tqdm
