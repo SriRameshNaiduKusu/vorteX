@@ -94,7 +94,6 @@ vorteX -js https://example.com --depth 3 -o js-links.txt
 ```bash
 vorteX -paramfuzz -url https://example.com/search -w /path/to/param-wordlist.txt --method GET --headers "User-Agent:Mozilla/5.0" --format json -o params.json
 ```
-
 ---
 ## Disclaimer
 
