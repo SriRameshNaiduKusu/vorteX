@@ -10,7 +10,7 @@ setup(
     install_requires=open('requirements.txt').read().splitlines(),
     entry_points={
         'console_scripts': [
-            'vortex = vortex.main:main',
+            'vorteX = vortex.main:main',
         ],
     },
 )
