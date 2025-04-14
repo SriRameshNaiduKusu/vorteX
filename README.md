@@ -22,27 +22,12 @@
 ```bash
 git clone https://github.com/SriRameshNaiduKusu/vorteX.git
 cd vorteX
-pip install -r requirements.txt
-python3 main.py -h
-
-```
----
-
-## (Optional) Install globally
-
-```
-git clone https://github.com/SriRameshNaiduKusu/vorteX.git
-cd vorteX
 pip install .
+
 ```
 ---
 
 ## Usage
-
-```
-python main.py -h
-```
->If Installed Globally
 
 ```
 vortex -h
@@ -52,14 +37,44 @@ vortex -h
 
 ## Example Commands
 
-```
-python main.py -d target.com -wsub wordlist.txt -o subdomains.txt
-python main.py -url https://target.com -fuzz -wdir wordlist.txt -o fuzz.txt
-python main.py -crawl https://target.com --depth 3 -o crawl.txt
-python main.py -js https://target.com --depth 3 -o js.txt
-python main.py -paramfuzz -url https://target.com -wparam params.txt -o params.json --format json
+### Subdomain Enumeration
 
+```bash
+vortex -d example.com -w /path/to/subdomain-wordlist.txt -o subdomains.txt
 ```
+
+---
+
+### Directory Fuzzing
+
+```bash
+vortex -url https://example.com -w /path/to/directory-wordlist.txt -fuzz -o directories.txt
+```
+
+---
+
+### Third-Party Link Crawling
+
+```bash
+vortex -crawl https://example.com --depth 3 -o crawl-links.txt
+```
+
+---
+
+### JavaScript File & Endpoint Discovery
+
+```bash
+vortex -js https://example.com --depth 3 -o js-links.txt
+```
+
+---
+
+### Parameter Discovery
+
+```bash
+vortex -paramfuzz -url https://example.com/search -w /path/to/param-wordlist.txt --method GET --headers "User-Agent:Mozilla/5.0" --format json -o params.json
+```
+
 
 ---
 

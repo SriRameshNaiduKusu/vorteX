@@ -18,7 +18,7 @@ from pyfiglet import figlet_format
 from colorama import Fore, Style, init
 import re
 
-init()
+init(autoreset=True)
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -36,14 +36,14 @@ signal.signal(signal.SIGINT, signal_handler)
 
 def display_banner():
     print(Fore.RED + figlet_format("vorteX", font="slant") + Style.RESET_ALL)
-    print(f"{Fore.MAGENTA}[✔] vorteX - The Ultimate Recon Tool{Style.RESET_ALL}\n")
+    print(f"{Fore.MAGENTA}[✔] vorteX - The Advanced Recon Tool{Style.RESET_ALL}\n")
 
 # ===== Subdomain Enumeration =====
 async def resolve_subdomain(subdomain, resolver, sem):
     async with sem:
+        if stop_event.is_set():
+            return None
         try:
-            if stop_event.is_set():
-                return None
             result = await resolver.gethostbyname(subdomain, socket.AF_INET)
             return subdomain, result.addresses[0]
         except:
@@ -61,6 +61,8 @@ async def enumerate_subdomains(domain, wordlist, max_threads, output_file):
     with tqdm(total=len(subdomains), desc="Subdomains", ncols=80) as bar:
         tasks = [resolve_subdomain(sub, resolver, sem) for sub in subdomains]
         for coro in asyncio.as_completed(tasks):
+            if stop_event.is_set():
+                break
             result = await coro
             if result:
                 sub, ip = result
@@ -75,6 +77,8 @@ async def enumerate_subdomains(domain, wordlist, max_threads, output_file):
 # ===== Directory Fuzzing =====
 async def fetch_directory(url, session, sem):
     async with sem:
+        if stop_event.is_set():
+            return None
         try:
             async with session.get(url, timeout=5) as resp:
                 if resp.status in [200, 301, 302, 403]:
@@ -96,6 +100,8 @@ async def directory_fuzzing(base_url, wordlist, max_threads, output_file):
         with tqdm(total=len(urls), desc="Fuzzing", ncols=80) as bar:
             tasks = [fetch_directory(url, session, sem) for url in urls]
             for coro in asyncio.as_completed(tasks):
+                if stop_event.is_set():
+                    break
                 result = await coro
                 if result:
                     url, status = result
@@ -107,7 +113,7 @@ async def directory_fuzzing(base_url, wordlist, max_threads, output_file):
         with open(output_file, "a") as f:
             f.write("\n".join(results) + "\n")
 
-# ===== Third-Party Crawler =====
+# ===== Third-Party Link Crawler =====
 async def crawl_domain(target_url, depth, output_file=None):
     display_banner()
     print(f"{Fore.CYAN}[*] Crawling {target_url} for third-party links (depth={depth})...{Style.RESET_ALL}")
@@ -121,6 +127,8 @@ async def crawl_domain(target_url, depth, output_file=None):
         for _ in range(depth):
             next_queue = set()
             for url in queue:
+                if stop_event.is_set():
+                    break
                 if url in visited:
                     continue
                 visited.add(url)
@@ -137,7 +145,6 @@ async def crawl_domain(target_url, depth, output_file=None):
                                 external_links.add(full_url)
                             else:
                                 next_queue.add(full_url)
-
                 except:
                     continue
             queue = next_queue
@@ -166,7 +173,7 @@ async def fetch_and_extract_js_links(js_url, session):
 
 async def discover_js_links(target_url, depth, output_file=None):
     display_banner()
-    print(f"{Fore.CYAN}[*] Crawling {target_url} for JavaScript files and endpoint discovery (depth={depth})...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}[*] Crawling {target_url} for JavaScript files and endpoints (depth={depth})...{Style.RESET_ALL}")
 
     queue = {target_url}
     visited = set()
@@ -177,6 +184,8 @@ async def discover_js_links(target_url, depth, output_file=None):
         for _ in range(depth):
             next_queue = set()
             for url in queue:
+                if stop_event.is_set():
+                    break
                 if url in visited:
                     continue
                 visited.add(url)
@@ -186,20 +195,18 @@ async def discover_js_links(target_url, depth, output_file=None):
                         html = await resp.text()
                         soup = BeautifulSoup(html, "html.parser")
 
-                        # JS Files
                         for tag in soup.find_all("script", src=True):
                             js_url = urljoin(url, tag["src"])
                             js_files.add(js_url)
                             endpoints.update(await fetch_and_extract_js_links(js_url, session))
 
-                        # Internal crawling
                         for a in soup.find_all("a", href=True):
                             href = a["href"]
                             full_url = urljoin(url, href)
                             if urlparse(full_url).netloc == urlparse(target_url).netloc:
                                 next_queue.add(full_url)
                 except:
-                    pass
+                    continue
             queue = next_queue
 
     print(f"\n{Fore.YELLOW}[+] JavaScript Files Found: {len(js_files)}{Style.RESET_ALL}")
@@ -260,35 +267,30 @@ def parameter_discovery(url, method, headers_list, wordlist, output_file, output
 
 # ===== CLI Parser =====
 def main():
-    parser = argparse.ArgumentParser(description="vorteX - Async Recon Tool")
+    parser = argparse.ArgumentParser(description="vorteX - Advanced Async Recon Tool")
 
     parser.add_argument("-d", "--domain", help="Target domain for subdomain enumeration")
-    parser.add_argument("-wsub", "--wordlist_sub", help="Wordlist for subdomain enumeration")
-
     parser.add_argument("-url", "--target", help="Target URL for directory fuzzing")
-    parser.add_argument("-wdir", "--wordlist_dir", help="Wordlist for directory fuzzing")
     parser.add_argument("-fuzz", "--fuzzing", action="store_true", help="Enable directory fuzzing")
-
     parser.add_argument("-crawl", help="Target URL to crawl for third-party links")
     parser.add_argument("-js", help="Target URL to discover JavaScript files and endpoints")
-    parser.add_argument("--depth", type=int, default=2, help="Crawling depth (default: 2)")
-
     parser.add_argument("-paramfuzz", action="store_true", help="Enable parameter discovery")
-    parser.add_argument("-wparam", "--wordlist_param", help="Wordlist for parameter discovery")
+
     parser.add_argument("--method", choices=["GET", "POST"], default="GET")
     parser.add_argument("--headers", nargs='*', default=[])
     parser.add_argument("--format", choices=["json", "txt"], default="txt")
-
+    parser.add_argument("--depth", type=int, default=2, help="Crawling depth (default: 2)")
+    parser.add_argument("-w", "--wordlist", help="Wordlist")
     parser.add_argument("-T", "--threads", type=int, default=10)
     parser.add_argument("-o", "--output", help="Save results to file")
 
     args = parser.parse_args()
 
-    if args.domain and args.wordlist_sub:
-        asyncio.run(enumerate_subdomains(args.domain, args.wordlist_sub, args.threads, args.output))
+    if args.domain and args.wordlist:
+        asyncio.run(enumerate_subdomains(args.domain, args.wordlist, args.threads, args.output))
 
-    elif args.target and args.fuzzing and args.wordlist_dir:
-        asyncio.run(directory_fuzzing(args.target, args.wordlist_dir, args.threads, args.output))
+    elif args.target and args.fuzzing and args.wordlist:
+        asyncio.run(directory_fuzzing(args.target, args.wordlist, args.threads, args.output))
 
     elif args.crawl:
         asyncio.run(crawl_domain(args.crawl, args.depth, args.output))
@@ -296,8 +298,8 @@ def main():
     elif args.js:
         asyncio.run(discover_js_links(args.js, args.depth, args.output))
 
-    elif args.paramfuzz and args.target and args.wordlist_param:
-        parameter_discovery(args.target, args.method, args.headers, args.wordlist_param, args.output, args.format)
+    elif args.paramfuzz and args.target and args.wordlist:
+        parameter_discovery(args.target, args.method, args.headers, args.wordlist, args.output, args.format)
 
     else:
         print(f"{Fore.RED}[!] Invalid argument combination. Use -h for help.{Style.RESET_ALL}")
