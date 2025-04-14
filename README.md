@@ -35,7 +35,7 @@ pip install . --break-system-packages
 ## Usage
 
 ```
-vortex -h
+vorteX -h
 ```
 
 ---
@@ -45,7 +45,7 @@ vortex -h
 ### Subdomain Enumeration
 
 ```bash
-vortex -d example.com -w /path/to/subdomain-wordlist.txt -o subdomains.txt
+vorteX -d example.com -w /path/to/subdomain-wordlist.txt -o subdomains.txt
 ```
 
 ---
@@ -53,7 +53,7 @@ vortex -d example.com -w /path/to/subdomain-wordlist.txt -o subdomains.txt
 ### Directory Fuzzing
 
 ```bash
-vortex -url https://example.com -w /path/to/directory-wordlist.txt -fuzz -o directories.txt
+vorteX -url https://example.com -w /path/to/directory-wordlist.txt -fuzz -o directories.txt
 ```
 
 ---
@@ -61,7 +61,7 @@ vortex -url https://example.com -w /path/to/directory-wordlist.txt -fuzz -o dire
 ### Third-Party Link Crawling
 
 ```bash
-vortex -crawl https://example.com --depth 3 -o crawl-links.txt
+vorteX -crawl https://example.com --depth 3 -o crawl-links.txt
 ```
 
 ---
@@ -69,7 +69,7 @@ vortex -crawl https://example.com --depth 3 -o crawl-links.txt
 ### JavaScript File & Endpoint Discovery
 
 ```bash
-vortex -js https://example.com --depth 3 -o js-links.txt
+vorteX -js https://example.com --depth 3 -o js-links.txt
 ```
 
 ---
@@ -77,7 +77,7 @@ vortex -js https://example.com --depth 3 -o js-links.txt
 ### Parameter Discovery
 
 ```bash
-vortex -paramfuzz -url https://example.com/search -w /path/to/param-wordlist.txt --method GET --headers "User-Agent:Mozilla/5.0" --format json -o params.json
+vorteX -paramfuzz -url https://example.com/search -w /path/to/param-wordlist.txt --method GET --headers "User-Agent:Mozilla/5.0" --format json -o params.json
 ```
 
 
