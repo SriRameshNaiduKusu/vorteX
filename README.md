@@ -25,6 +25,11 @@ cd vorteX
 pip install .
 
 ```
+>if you get "error: externally-managed-environment", Use this to install
+
+```
+pip install . --break-system-packages
+```
 ---
 
 ## Usage
