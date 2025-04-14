@@ -3,26 +3,16 @@ from setuptools import setup, find_packages
 setup(
     name='vortex-recon',
     version='1.0.0',
-    author='Sri Ramesh Naidu Kusu',
+    author='SriRameshNaidu Kusu',
     description='vorteX - Advanced Async Reconnaissance & Fuzzing Tool',
     packages=find_packages(),
-    py_modules=['main'],
-    install_requires=[
-        'requests',
-        'aiohttp',
-        'aiodns',
-        'tqdm',
-        'beautifulsoup4',
-        'pyfiglet',
-        'colorama'
-    ],
+    include_package_data=True,
+    install_requires=open('requirements.txt').read().splitlines(),
     entry_points={
         'console_scripts': [
-            'vortex = main:main'
-        ]
+            'vortex = vortex.main:main',
+        ],
     },
-    classifiers=[
-        'Programming Language :: Python :: 3',
-        'License :: OSI Approved :: MIT License',
-    ],
 )
+
+
