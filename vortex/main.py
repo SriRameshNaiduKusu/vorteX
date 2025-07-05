@@ -17,6 +17,7 @@ from urllib.parse import urlparse, urljoin
 from pyfiglet import figlet_format
 from colorama import Fore, Style, init
 import re
+from tech_fingerprinting import fingerprint_technologies
 
 init(autoreset=True)
 
@@ -57,6 +58,7 @@ async def enumerate_subdomains(domain, wordlist, max_threads, output_file):
     subdomains = [f"{line.strip()}.{domain}" for line in open(wordlist) if line.strip()]
     sem = asyncio.Semaphore(max_threads)
     results = []
+    found_urls = []
 
     with tqdm(total=len(subdomains), desc="Subdomains", ncols=80) as bar:
         tasks = [resolve_subdomain(sub, resolver, sem) for sub in subdomains]
@@ -68,11 +70,14 @@ async def enumerate_subdomains(domain, wordlist, max_threads, output_file):
                 sub, ip = result
                 tqdm.write(f"{Fore.GREEN}[✔] Found: {sub} -> {ip}{Style.RESET_ALL}")
                 results.append(f"{sub} -> {ip}")
+                found_urls.append(f"https://{sub}")
             bar.update(1)
 
     if output_file:
         with open(output_file, "a") as f:
             f.write("\n".join(results) + "\n")
+
+    return found_urls
 
 # ===== Directory Fuzzing =====
 async def fetch_directory(url, session, sem):
@@ -94,6 +99,7 @@ async def directory_fuzzing(base_url, wordlist, max_threads, output_file):
     urls = [f"{base_url.rstrip('/')}/{path}" for path in paths]
     sem = asyncio.Semaphore(max_threads)
     results = []
+    found_urls = []
 
     connector = aiohttp.TCPConnector(limit=max_threads)
     async with aiohttp.ClientSession(connector=connector) as session:
@@ -107,11 +113,14 @@ async def directory_fuzzing(base_url, wordlist, max_threads, output_file):
                     url, status = result
                     tqdm.write(f"{Fore.GREEN}[✔] Found: {url} ({status}){Style.RESET_ALL}")
                     results.append(f"{url} ({status})")
+                    found_urls.append(url)
                 bar.update(1)
 
     if output_file:
         with open(output_file, "a") as f:
             f.write("\n".join(results) + "\n")
+
+    return found_urls
 
 # ===== Third-Party Link Crawler =====
 async def crawl_domain(target_url, depth, output_file=None):
@@ -275,6 +284,7 @@ def main():
     parser.add_argument("-crawl", help="Target URL to crawl for third-party links")
     parser.add_argument("-js", help="Target URL to discover JavaScript files and endpoints")
     parser.add_argument("-paramfuzz", action="store_true", help="Enable parameter discovery")
+    parser.add_argument("-tech", action="store_true", help="Enable technology fingerprinting on discovered URLs")
 
     parser.add_argument("--method", choices=["GET", "POST"], default="GET")
     parser.add_argument("--headers", nargs='*', default=[])
@@ -287,10 +297,14 @@ def main():
     args = parser.parse_args()
 
     if args.domain and args.wordlist:
-        asyncio.run(enumerate_subdomains(args.domain, args.wordlist, args.threads, args.output))
+        found_urls = asyncio.run(enumerate_subdomains(args.domain, args.wordlist, args.threads, args.output))
+        if args.tech and found_urls:
+            asyncio.run(fingerprint_technologies(found_urls))
 
     elif args.target and args.fuzzing and args.wordlist:
-        asyncio.run(directory_fuzzing(args.target, args.wordlist, args.threads, args.output))
+        found_urls = asyncio.run(directory_fuzzing(args.target, args.wordlist, args.threads, args.output))
+        if args.tech and found_urls:
+            asyncio.run(fingerprint_technologies(found_urls))
 
     elif args.crawl:
         asyncio.run(crawl_domain(args.crawl, args.depth, args.output))
