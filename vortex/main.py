@@ -17,7 +17,7 @@ from urllib.parse import urlparse, urljoin
 from pyfiglet import figlet_format
 from colorama import Fore, Style, init
 import re
-from tech_fingerprinting import fingerprint_technologies
+from vortex.tech_fingerprinting import fingerprint_technologies
 
 init(autoreset=True)
 

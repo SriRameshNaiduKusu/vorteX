@@ -14,6 +14,7 @@
   - Third-Party Link Finder
   - JavaScript File Discovery
   - JS Endpoint Extraction
+  - NEW: Technology Fingerprinting
 
 ---
 
@@ -47,6 +48,7 @@ Options:
   -crawl TARGET            Target URL to crawl for third-party links
   -js TARGET               Target URL to discover JavaScript files and endpoints
   -paramfuzz               Enable parameter discovery
+  -tech                    Enable technology fingerprinting on discovered URLs
   --method METHOD          HTTP method to use for parameter discovery (GET/POST) [default: GET]
   --headers HEADERS        Custom headers for requests (e.g., "User-Agent:Custom")
   --format FORMAT          Output format for parameter discovery (json/txt) [default: txt]
@@ -57,18 +59,18 @@ Options:
 ```
 ---
 
-### Subdomain Enumeration
+### Subdomain Enumeration + Tech Fingerprinting
 
 ```bash
-vorteX -d example.com -w /path/to/subdomain-wordlist.txt -o subdomains.txt
+vorteX -d example.com -w /path/to/subdomain-wordlist.txt -o subdomains.txt -tech
 ```
 
 ---
 
-### Directory Fuzzing
+### Directory Fuzzing + Tech Fingerprinting
 
 ```bash
-vorteX -url https://example.com -w /path/to/directory-wordlist.txt -fuzz -o directories.txt
+vorteX -url https://example.com -w /path/to/directory-wordlist.txt -fuzz -o directories.txt -tech
 ```
 
 ---
@@ -95,6 +97,15 @@ vorteX -js https://example.com --depth 3 -o js-links.txt
 vorteX -paramfuzz -url https://example.com/search -w /path/to/param-wordlist.txt --method GET --headers "User-Agent:Mozilla/5.0" --format json -o params.json
 ```
 ---
+
+### Technology Fingerprinting (-tech)
+
+- Works with Subdomain Enumeration and Directory Fuzzing. 
+- Detects server, CMS, frameworks on discovered URLs. 
+- Saves results in fingerprint_results.txt.
+
+---
+
 ## Disclaimer
 
 >**This tool is intended for security testing and educational purposes only. Do not use this tool against targets without proper authorization.**
