@@ -98,7 +98,7 @@ vorteX -paramfuzz -url https://example.com/search -w /path/to/param-wordlist.txt
 ```
 ---
 
-### Technology Fingerprinting (-tech)
+### Technology Fingerprinting (-tech) (New Feature)
 
 - Works with Subdomain Enumeration and Directory Fuzzing. 
 - Detects server, CMS, frameworks on discovered URLs. 
