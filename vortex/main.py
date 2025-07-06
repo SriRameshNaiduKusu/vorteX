@@ -26,6 +26,7 @@ if sys.platform.startswith('win'):
 
 stop_event = threading.Event()
 
+
 def signal_handler(sig, frame):
     if not stop_event.is_set():
         print("\n[!] Scan interrupted. Exiting...\n")
@@ -33,11 +34,14 @@ def signal_handler(sig, frame):
         time.sleep(0.5)
         sys.exit(0)
 
+
 signal.signal(signal.SIGINT, signal_handler)
+
 
 def display_banner():
     print(Fore.RED + figlet_format("vorteX", font="slant") + Style.RESET_ALL)
     print(f"{Fore.MAGENTA}[✔] vorteX - The Advanced Recon Tool{Style.RESET_ALL}\n")
+
 
 # ===== Subdomain Enumeration =====
 async def resolve_subdomain(subdomain, resolver, sem):
@@ -45,23 +49,25 @@ async def resolve_subdomain(subdomain, resolver, sem):
         if stop_event.is_set():
             return None
         try:
+            # Use HTTPS by default as it's more common
             result = await resolver.gethostbyname(subdomain, socket.AF_INET)
             return subdomain, result.addresses[0]
         except:
             return None
+
 
 async def enumerate_subdomains(domain, wordlist, max_threads, output_file):
     display_banner()
     print(f"{Fore.CYAN}[*] Enumerating subdomains for {domain}...{Style.RESET_ALL}")
 
     resolver = aiodns.DNSResolver()
-    subdomains = [f"{line.strip()}.{domain}" for line in open(wordlist) if line.strip()]
+    subdomains_to_check = [f"{line.strip()}.{domain}" for line in open(wordlist) if line.strip()]
     sem = asyncio.Semaphore(max_threads)
     results = []
     found_urls = []
 
-    with tqdm(total=len(subdomains), desc="Subdomains", ncols=80) as bar:
-        tasks = [resolve_subdomain(sub, resolver, sem) for sub in subdomains]
+    with tqdm(total=len(subdomains_to_check), desc="Subdomains", ncols=80) as bar:
+        tasks = [resolve_subdomain(sub, resolver, sem) for sub in subdomains_to_check]
         for coro in asyncio.as_completed(tasks):
             if stop_event.is_set():
                 break
@@ -70,7 +76,7 @@ async def enumerate_subdomains(domain, wordlist, max_threads, output_file):
                 sub, ip = result
                 tqdm.write(f"{Fore.GREEN}[✔] Found: {sub} -> {ip}{Style.RESET_ALL}")
                 results.append(f"{sub} -> {ip}")
-                found_urls.append(f"https://{sub}")
+                found_urls.append(f"https://{sub}")  # Assume HTTPS for fingerprinting
             bar.update(1)
 
     if output_file:
@@ -79,32 +85,35 @@ async def enumerate_subdomains(domain, wordlist, max_threads, output_file):
 
     return found_urls
 
+
 # ===== Directory Fuzzing =====
 async def fetch_directory(url, session, sem):
     async with sem:
         if stop_event.is_set():
             return None
         try:
-            async with session.get(url, timeout=5) as resp:
+            async with session.get(url, timeout=5, ssl=False) as resp:
                 if resp.status in [200, 301, 302, 403]:
                     return url, resp.status
         except:
             return None
 
-async def directory_fuzzing(base_url, wordlist, max_threads, output_file):
+
+async def directory_fuzzing(base_urls, wordlist, max_threads, output_file):
     display_banner()
-    print(f"{Fore.CYAN}[*] Fuzzing directories on {base_url}...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}[*] Fuzzing directories on {len(base_urls)} target(s)...{Style.RESET_ALL}")
 
     paths = [line.strip() for line in open(wordlist) if line.strip()]
-    urls = [f"{base_url.rstrip('/')}/{path}" for path in paths]
+    all_urls_to_fuzz = [f"{base_url.rstrip('/')}/{path}" for base_url in base_urls for path in paths]
+
     sem = asyncio.Semaphore(max_threads)
     results = []
     found_urls = []
 
-    connector = aiohttp.TCPConnector(limit=max_threads)
+    connector = aiohttp.TCPConnector(limit=max_threads, ssl=False)
     async with aiohttp.ClientSession(connector=connector) as session:
-        with tqdm(total=len(urls), desc="Fuzzing", ncols=80) as bar:
-            tasks = [fetch_directory(url, session, sem) for url in urls]
+        with tqdm(total=len(all_urls_to_fuzz), desc="Fuzzing", ncols=80) as bar:
+            tasks = [fetch_directory(url, session, sem) for url in all_urls_to_fuzz]
             for coro in asyncio.as_completed(tasks):
                 if stop_event.is_set():
                     break
@@ -122,131 +131,141 @@ async def directory_fuzzing(base_url, wordlist, max_threads, output_file):
 
     return found_urls
 
+
 # ===== Third-Party Link Crawler =====
-async def crawl_domain(target_url, depth, output_file=None):
+async def crawl_domain(target_urls, depth, output_file=None):
     display_banner()
-    print(f"{Fore.CYAN}[*] Crawling {target_url} for third-party links (depth={depth})...{Style.RESET_ALL}")
+    print(
+        f"{Fore.CYAN}[*] Crawling {len(target_urls)} target(s) for third-party links (depth={depth})...{Style.RESET_ALL}")
 
-    base_domain = urlparse(target_url).netloc
-    queue = {target_url}
-    visited = set()
-    external_links = set()
-
+    all_external_links = set()
     async with aiohttp.ClientSession() as session:
-        for _ in range(depth):
-            next_queue = set()
-            for url in queue:
-                if stop_event.is_set():
+        for target_url in target_urls:
+            base_domain = urlparse(target_url).netloc
+            queue = {target_url}
+            visited = set()
+
+            for _ in range(depth):
+                if stop_event.is_set() or not queue:
                     break
-                if url in visited:
-                    continue
-                visited.add(url)
 
-                try:
-                    async with session.get(url, timeout=5) as resp:
-                        html = await resp.text()
-                        soup = BeautifulSoup(html, "html.parser")
+                tasks = []
+                current_queue = list(queue)
+                queue = set()
 
-                        for tag in soup.find_all("a", href=True):
-                            href = tag["href"]
-                            full_url = urljoin(url, href)
-                            if urlparse(full_url).netloc != base_domain:
-                                external_links.add(full_url)
-                            else:
-                                next_queue.add(full_url)
-                except:
-                    continue
-            queue = next_queue
+                for url in current_queue:
+                    if url in visited:
+                        continue
+                    visited.add(url)
+                    try:
+                        async with session.get(url, timeout=5, ssl=False) as resp:
+                            html = await resp.text()
+                            soup = BeautifulSoup(html, "html.parser")
 
-    print(f"\n{Fore.YELLOW}[+] Total Third-Party Links Found: {len(external_links)}{Style.RESET_ALL}")
-    for link in external_links:
+                            for tag in soup.find_all("a", href=True):
+                                href = tag["href"]
+                                full_url = urljoin(url, href)
+                                parsed_full_url = urlparse(full_url)
+
+                                if parsed_full_url.netloc and parsed_full_url.scheme in ['http', 'https']:
+                                    if parsed_full_url.netloc != base_domain:
+                                        all_external_links.add(full_url)
+                                    else:
+                                        queue.add(full_url)
+                    except:
+                        continue
+
+    print(f"\n{Fore.YELLOW}[+] Total Third-Party Links Found: {len(all_external_links)}{Style.RESET_ALL}")
+    for link in sorted(list(all_external_links)):
         print(f"{Fore.MAGENTA}[✔] {link}{Style.RESET_ALL}")
 
     if output_file:
         with open(output_file, "a") as f:
             f.write("\n# Crawled Links\n")
-            f.write("\n".join(external_links) + "\n")
+            f.write("\n".join(sorted(list(all_external_links))) + "\n")
+
 
 # ===== JavaScript Link Discovery =====
-async def fetch_and_extract_js_links(js_url, session):
-    js_links = set()
-    try:
-        async with session.get(js_url, timeout=5) as resp:
-            if resp.status == 200:
-                text = await resp.text()
-                found = re.findall(r'["\']((?:https?:)?//[^"\']+|/[^"\']+)["\']', text)
-                js_links.update(found)
-    except:
-        pass
-    return js_links
-
-async def discover_js_links(target_url, depth, output_file=None):
+async def discover_js_links(target_urls, depth, output_file=None):
     display_banner()
-    print(f"{Fore.CYAN}[*] Crawling {target_url} for JavaScript files and endpoints (depth={depth})...{Style.RESET_ALL}")
+    print(
+        f"{Fore.CYAN}[*] Crawling {len(target_urls)} target(s) for JS files and endpoints (depth={depth})...{Style.RESET_ALL}")
 
-    queue = {target_url}
-    visited = set()
-    js_files = set()
-    endpoints = set()
+    all_js_files = set()
+    all_endpoints = set()
 
     async with aiohttp.ClientSession() as session:
-        for _ in range(depth):
-            next_queue = set()
-            for url in queue:
-                if stop_event.is_set():
+        for target_url in target_urls:
+            queue = {target_url}
+            visited = set()
+            base_domain = urlparse(target_url).netloc
+
+            for _ in range(depth):
+                if stop_event.is_set() or not queue:
                     break
-                if url in visited:
-                    continue
-                visited.add(url)
 
-                try:
-                    async with session.get(url, timeout=5) as resp:
-                        html = await resp.text()
-                        soup = BeautifulSoup(html, "html.parser")
+                tasks = []
+                current_queue = list(queue)
+                queue = set()
 
-                        for tag in soup.find_all("script", src=True):
-                            js_url = urljoin(url, tag["src"])
-                            js_files.add(js_url)
-                            endpoints.update(await fetch_and_extract_js_links(js_url, session))
+                for url in current_queue:
+                    if url in visited:
+                        continue
+                    visited.add(url)
+                    try:
+                        async with session.get(url, timeout=5, ssl=False) as resp:
+                            html = await resp.text()
+                            soup = BeautifulSoup(html, "html.parser")
 
-                        for a in soup.find_all("a", href=True):
-                            href = a["href"]
-                            full_url = urljoin(url, href)
-                            if urlparse(full_url).netloc == urlparse(target_url).netloc:
-                                next_queue.add(full_url)
-                except:
-                    continue
-            queue = next_queue
+                            for tag in soup.find_all("script", src=True):
+                                js_url = urljoin(url, tag["src"])
+                                all_js_files.add(js_url)
+                                endpoints = await fetch_and_extract_js_links(js_url, session)
+                                all_endpoints.update(endpoints)
 
-    print(f"\n{Fore.YELLOW}[+] JavaScript Files Found: {len(js_files)}{Style.RESET_ALL}")
-    for js in js_files:
+                            for a in soup.find_all("a", href=True):
+                                full_url = urljoin(url, a["href"])
+                                if urlparse(full_url).netloc == base_domain:
+                                    queue.add(full_url)
+                    except:
+                        continue
+
+    print(f"\n{Fore.YELLOW}[+] JavaScript Files Found: {len(all_js_files)}{Style.RESET_ALL}")
+    for js in sorted(list(all_js_files)):
         print(f"{Fore.MAGENTA}[✔] JS: {js}{Style.RESET_ALL}")
 
-    print(f"\n{Fore.GREEN}[+] Endpoints/Paths Discovered in JS: {len(endpoints)}{Style.RESET_ALL}")
-    for ep in endpoints:
+    print(f"\n{Fore.GREEN}[+] Endpoints/Paths Discovered in JS: {len(all_endpoints)}{Style.RESET_ALL}")
+    for ep in sorted(list(all_endpoints)):
         print(f"{Fore.GREEN}[✔] {ep}{Style.RESET_ALL}")
 
     if output_file:
         with open(output_file, "a") as f:
             f.write("\n# JS Files\n")
-            f.writelines(f"{j}\n" for j in js_files)
+            f.writelines(f"{j}\n" for j in sorted(list(all_js_files)))
             f.write("\n# JS Endpoints\n")
-            f.writelines(f"{e}\n" for e in endpoints)
+            f.writelines(f"{e}\n" for e in sorted(list(all_endpoints)))
+
+
+async def fetch_and_extract_js_links(js_url, session):
+    js_links = set()
+    try:
+        async with session.get(js_url, timeout=5, ssl=False) as resp:
+            if resp.status == 200:
+                text = await resp.text()
+                # Improved regex to find paths and URLs
+                found = re.findall(r'["\']((?:https?:)?//[^"\']+|/[^"\']{1,200})["\']', text)
+                js_links.update(found)
+    except:
+        pass
+    return js_links
+
 
 # ===== Parameter Discovery =====
-def parse_headers(header_list):
-    headers = {}
-    for h in header_list:
-        if ":" in h:
-            k, v = h.split(":", 1)
-            headers[k.strip()] = v.strip()
-    return headers
-
 def parameter_discovery(url, method, headers_list, wordlist, output_file, output_format):
     display_banner()
     print(f"{Fore.CYAN}[*] Discovering parameters on {url}...{Style.RESET_ALL}")
 
-    headers = parse_headers(headers_list)
+    headers = {k.strip(): v.strip() for h in headers_list if ":" in h for k, v in [h.split(":", 1)]}
     params = [line.strip() for line in open(wordlist) if line.strip()]
     found = {}
 
@@ -256,11 +275,12 @@ def parameter_discovery(url, method, headers_list, wordlist, output_file, output
                 break
             payload = {param: "vorteXTest"}
             try:
+                # Using synchronous requests for this module as it's simpler for its logic
                 response = requests.request(method, url, params=payload, headers=headers, timeout=5)
                 if "vorteXTest" in response.text:
                     found[param] = response.status_code
                     tqdm.write(f"{Fore.GREEN}[✔] {param} ({response.status_code}){Style.RESET_ALL}")
-            except:
+            except requests.exceptions.RequestException:
                 pass
             bar.update(1)
 
@@ -274,50 +294,86 @@ def parameter_discovery(url, method, headers_list, wordlist, output_file, output
 
     print(f"{Fore.CYAN}\n[✔] Completed - Found {len(found)} parameters.{Style.RESET_ALL}")
 
+
 # ===== CLI Parser =====
 def main():
-    parser = argparse.ArgumentParser(description="vorteX - Advanced Async Recon Tool")
+    parser = argparse.ArgumentParser(description="vorteX - Advanced Async Recon Tool. Use '-' as a target to read from stdin.")
 
+    # Modes
     parser.add_argument("-d", "--domain", help="Target domain for subdomain enumeration")
-    parser.add_argument("-url", "--target", help="Target URL for directory fuzzing")
-    parser.add_argument("-fuzz", "--fuzzing", action="store_true", help="Enable directory fuzzing")
-    parser.add_argument("-crawl", help="Target URL to crawl for third-party links")
-    parser.add_argument("-js", help="Target URL to discover JavaScript files and endpoints")
-    parser.add_argument("-paramfuzz", action="store_true", help="Enable parameter discovery")
-    parser.add_argument("-tech", action="store_true", help="Enable technology fingerprinting on discovered URLs")
+    parser.add_argument("-fuzz", "--fuzzing", action="store_true", help="Enable directory fuzzing on target URLs")
+    parser.add_argument("-crawl", "--crawling", action="store_true", help="Crawl target URLs for third-party links")
+    parser.add_argument("-js", "--discover-js", action="store_true", help="Discover JS files and endpoints on target URLs")
+    parser.add_argument("-paramfuzz", "--parameter-fuzzing", action="store_true", help="Enable parameter discovery on a single target URL")
+    parser.add_argument("-tech", "--fingerprint", action="store_true", help="Enable technology fingerprinting on target URLs")
+    parser.add_argument("-url", "--target", help="Target URL (required for some modes if not using stdin)")
 
-    parser.add_argument("--method", choices=["GET", "POST"], default="GET")
-    parser.add_argument("--headers", nargs='*', default=[])
-    parser.add_argument("--format", choices=["json", "txt"], default="txt")
-    parser.add_argument("--depth", type=int, default=2, help="Crawling depth (default: 2)")
-    parser.add_argument("-w", "--wordlist", help="Wordlist")
-    parser.add_argument("-T", "--threads", type=int, default=10)
-    parser.add_argument("-o", "--output", help="Save results to file")
+    # Options
+    parser.add_argument("-w", "--wordlist", help="Wordlist for enumeration, fuzzing, or paramfuzz")
+    parser.add_argument("-T", "--threads", type=int, default=20, help="Number of concurrent threads/tasks")
+    parser.add_argument("-o", "--output", help="Save primary results to a file (e.g., subdomains, fuzz results)")
+    parser.add_argument("--depth", type=int, default=2, help="Crawling depth for -js and -crawl")
+    parser.add_argument("--method", choices=["GET", "POST"], default="GET", help="HTTP method for -paramfuzz")
+    parser.add_argument("--headers", nargs='*', default=[], help='Custom headers (e.g., "User-Agent: UA")')
+    parser.add_argument("--format", choices=["json", "txt"], default="txt", help="Output format for -paramfuzz")
 
     args = parser.parse_args()
 
-    if args.domain and args.wordlist:
+    targets = []
+    # Check if data is being piped to stdin
+    if not sys.stdin.isatty():
+        print(f"{Fore.CYAN}[*] Reading targets from stdin...{Style.RESET_ALL}")
+        targets = [line.strip() for line in sys.stdin if line.strip()]
+    elif args.target:
+        targets = [args.target]
+
+    # --- Mode Logic ---
+    if args.domain:
+        if not args.wordlist:
+            print(f"{Fore.RED}[!] Wordlist required for subdomain enumeration. Use -w.{Style.RESET_ALL}")
+            sys.exit(1)
         found_urls = asyncio.run(enumerate_subdomains(args.domain, args.wordlist, args.threads, args.output))
-        if args.tech and found_urls:
+        if args.fingerprint and found_urls:
+            print(f"{Fore.CYAN}[*] Running technology fingerprinting on discovered subdomains...{Style.RESET_ALL}")
             asyncio.run(fingerprint_technologies(found_urls))
 
-    elif args.target and args.fuzzing and args.wordlist:
-        found_urls = asyncio.run(directory_fuzzing(args.target, args.wordlist, args.threads, args.output))
-        if args.tech and found_urls:
+    elif args.fuzzing:
+        if not args.wordlist:
+            print(f"{Fore.RED}[!] Wordlist required for fuzzing. Use -w.{Style.RESET_ALL}")
+            sys.exit(1)
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+
+        found_urls = asyncio.run(directory_fuzzing(targets, args.wordlist, args.threads, args.output))
+        if args.fingerprint and found_urls:
+            print(f"{Fore.CYAN}[*] Running technology fingerprinting on fuzzed URLs...{Style.RESET_ALL}")
             asyncio.run(fingerprint_technologies(found_urls))
 
-    elif args.crawl:
-        asyncio.run(crawl_domain(args.crawl, args.depth, args.output))
+    elif args.crawling:
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(crawl_domain(targets, args.depth, args.output))
 
-    elif args.js:
-        asyncio.run(discover_js_links(args.js, args.depth, args.output))
+    elif args.discover_js:
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(discover_js_links(targets, args.depth, args.output))
 
-    elif args.paramfuzz and args.target and args.wordlist:
-        parameter_discovery(args.target, args.method, args.headers, args.wordlist, args.output, args.format)
+    elif args.parameter_fuzzing:
+        if not args.wordlist or not targets:
+            print(
+                f"{Fore.RED}[!] Target URL (-url) and wordlist (-w) are required for parameter fuzzing.{Style.RESET_ALL}")
+            sys.exit(1)
+        parameter_discovery(targets[0], args.method, args.headers, args.wordlist, args.output, args.format)
+
+    elif args.fingerprint and targets:
+        asyncio.run(fingerprint_technologies(targets))
 
     else:
-        print(f"{Fore.RED}[!] Invalid argument combination. Use -h for help.{Style.RESET_ALL}")
-
+        print(f"{Fore.RED}[!] No valid mode or target specified. Use -h for help.{Style.RESET_ALL}")
 
 
 if __name__ == "__main__":
