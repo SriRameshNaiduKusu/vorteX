@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='vortex-recon',
-    version='1.0.1',
+    version='1.0.2',
     author='SriRameshNaidu Kusu',
     description='vorteX - Advanced Async Reconnaissance & Fuzzing Tool',
     packages=find_packages(),

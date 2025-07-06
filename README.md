@@ -15,6 +15,7 @@
   - JavaScript File Discovery
   - JS Endpoint Extraction
   - NEW: Technology Fingerprinting
+  - NEW: stdin support for tool chaining
 
 ---
 
@@ -39,24 +40,49 @@ pip install . --break-system-packages
 vorteX -h
 ```
 ```
+  
 usage: vorteX [OPTIONS]
 
 Options:
   -d DOMAIN                Target domain for subdomain enumeration (e.g., example.com)
-  -url TARGET              Target URL for directory fuzzing
-  -fuzz                    Enable directory fuzzing
-  -crawl TARGET            Target URL to crawl for third-party links
-  -js TARGET               Target URL to discover JavaScript files and endpoints
-  -paramfuzz               Enable parameter discovery
-  -tech                    Enable technology fingerprinting on discovered URLs
-  --method METHOD          HTTP method to use for parameter discovery (GET/POST) [default: GET]
-  --headers HEADERS        Custom headers for requests (e.g., "User-Agent:Custom")
-  --format FORMAT          Output format for parameter discovery (json/txt) [default: txt]
+  -url TARGET              A single target URL (if not piping from stdin)
+  
+  -fuzz                    Enable directory fuzzing on target(s)
+  -crawl                   Crawl target(s) for third-party links
+  -js                      Discover JS files and endpoints on target(s)
+  -tech                    Enable technology fingerprinting on target(s)
+  -paramfuzz               Enable parameter discovery on a single URL
+
+  -w WORDLIST              Wordlist to use (for -d, -fuzz, -paramfuzz)
+  -T THREADS               Number of threads [default: 20]
+  -o OUTPUT                Output file to save primary results
   --depth DEPTH            Crawling depth [default: 2]
-  -w WORDLIST              Wordlist to use (required for subdomain, fuzzing, and paramfuzz)
-  -T THREADS               Number of threads [default: 10]
-  -o OUTPUT                Output file to save results
+  --method METHOD          HTTP method for -paramfuzz (GET/POST) [default: GET]
+  --headers HEADERS        Custom headers for requests (e.g., "User-Agent:Custom")
+  --format FORMAT          Output format for -paramfuzz (json/txt) [default: txt]
 ```
+
+---
+
+### Chaining with other tools (stdin) 
+vorteX accepts a list of targets from standard input (stdin). This allows you to pipe the output from other tools directly into vorteX to create powerful, one-line commands.
+
+#### Example 1: Fuzzing & Tech-ID on Live Subdomains
+
+##### Find subdomains -> check for live web servers -> fuzz and fingerprint them with vorteX
+
+```bash
+subfinder -d example.com -silent | httpx -silent | vorteX -fuzz -w /path/to/wordlist.txt -tech
+```
+
+#### Example 2: Using a Local File as Input
+
+##### cat reads the file and pipes the URLs to vorteX for JS discovery
+
+```bash
+cat my_urls.txt | vorteX -js
+```
+
 ---
 
 ### Subdomain Enumeration + Tech Fingerprinting
@@ -104,6 +130,9 @@ vorteX -paramfuzz -url https://example.com/search -w /path/to/param-wordlist.txt
 - Detects server, CMS, frameworks on discovered URLs. 
 - Saves results in fingerprint_results.txt.
 
+```bash
+vorteX -url https://example.com -tech
+```
 ---
 
 ## Disclaimer
