@@ -373,7 +373,7 @@ def main():
         asyncio.run(fingerprint_technologies(targets))
 
     else:
-        print(f"{Fore.RED}[!] No valid mode or target specified. Use -h for help.{Style.RESET_ALL}")
+        print(f"{Fore.RED}[!] Please Specify Target. No valid mode or target specified. Use -h for help.{Style.RESET_ALL}")
 
 
 if __name__ == "__main__":
