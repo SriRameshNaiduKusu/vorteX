@@ -5,6 +5,13 @@ from colorama import Fore, Style, init
 from urllib.parse import urlparse
 
 from vortex.utils import display_banner, setup_logging, VERSION
+from vortex.wordlists import DEFAULT_SUBDOMAINS, DEFAULT_DIRECTORIES, DEFAULT_PARAMETERS
+
+
+def _count_lines(path):
+    """Return the number of non-empty lines in a file."""
+    with open(path) as fh:
+        return sum(1 for line in fh if line.strip())
 
 init(autoreset=True)
 
@@ -99,11 +106,11 @@ def main():
 
     elif args.domain and not any([args.dns_enum, args.ssl_check, args.port_scan]):
         from vortex.subdomain import enumerate_subdomains
+        wordlist = args.wordlist or DEFAULT_SUBDOMAINS
         if not args.wordlist:
-            print(f"{Fore.RED}[!] Wordlist required for subdomain enumeration. Use -w.{Style.RESET_ALL}")
-            sys.exit(1)
+            print(f"{Fore.CYAN}[*] No wordlist specified. Using built-in default: subdomains.txt ({_count_lines(wordlist)} entries){Style.RESET_ALL}")
         found_urls = asyncio.run(enumerate_subdomains(
-            args.domain, args.wordlist, args.threads, args.output,
+            args.domain, wordlist, args.threads, args.output,
             output_format=args.format, **common_kwargs
         ))
         if args.fingerprint and found_urls:
@@ -113,14 +120,14 @@ def main():
 
     elif args.fuzzing:
         from vortex.fuzzer import directory_fuzzing
+        wordlist = args.wordlist or DEFAULT_DIRECTORIES
         if not args.wordlist:
-            print(f"{Fore.RED}[!] Wordlist required for fuzzing. Use -w.{Style.RESET_ALL}")
-            sys.exit(1)
+            print(f"{Fore.CYAN}[*] No wordlist specified. Using built-in default: directories.txt ({_count_lines(wordlist)} entries){Style.RESET_ALL}")
         if not targets:
             print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
             sys.exit(1)
         found_urls = asyncio.run(directory_fuzzing(
-            targets, args.wordlist, args.threads, args.output,
+            targets, wordlist, args.threads, args.output,
             output_format=args.format, **common_kwargs
         ))
         if args.fingerprint and found_urls:
@@ -144,11 +151,14 @@ def main():
 
     elif args.parameter_fuzzing:
         from vortex.param_fuzzer import parameter_discovery
-        if not args.wordlist or not targets:
-            print(f"{Fore.RED}[!] Target URL (-url) and wordlist (-w) are required for parameter fuzzing.{Style.RESET_ALL}")
+        if not targets:
+            print(f"{Fore.RED}[!] Target URL (-url) is required for parameter fuzzing.{Style.RESET_ALL}")
             sys.exit(1)
+        wordlist = args.wordlist or DEFAULT_PARAMETERS
+        if not args.wordlist:
+            print(f"{Fore.CYAN}[*] No wordlist specified. Using built-in default: parameters.txt ({_count_lines(wordlist)} entries){Style.RESET_ALL}")
         asyncio.run(parameter_discovery(
-            targets[0], args.method, headers_dict, args.wordlist, args.output, args.format,
+            targets[0], args.method, headers_dict, wordlist, args.output, args.format,
             max_threads=args.threads, **common_kwargs
         ))
 
