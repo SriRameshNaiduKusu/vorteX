@@ -25,7 +25,7 @@ def test_analyze_headers_aspnet():
         'X-AspNet-Version': '4.0.30319',
     }
     result = analyze_headers(headers)
-    assert any('ASP.NET' in t for t in result)
+    assert 'ASP.NET (version: 4.0.30319)' in result
 
 
 def test_analyze_html_wordpress():

@@ -151,7 +151,13 @@ def main():
             sys.exit(1)
         host = urlparse(target).netloc or target
         port = 443
-        if ':' in host:
+        # Handle IPv6 addresses like [::1]:443
+        if host.startswith('['):
+            bracket_end = host.find(']')
+            if bracket_end != -1 and bracket_end + 1 < len(host) and host[bracket_end + 1] == ':':
+                port = int(host[bracket_end + 2:])
+                host = host[1:bracket_end]
+        elif ':' in host:
             try:
                 host, port_str = host.rsplit(':', 1)
                 port = int(port_str)
@@ -166,7 +172,12 @@ def main():
             print(f"{Fore.RED}[!] Target required for port scan. Use -url or -d.{Style.RESET_ALL}")
             sys.exit(1)
         host = urlparse(target).netloc or target
-        if ':' in host and not host.startswith('['):
+        # Strip port from host if present, handling IPv6 addresses
+        if host.startswith('['):
+            bracket_end = host.find(']')
+            if bracket_end != -1:
+                host = host[1:bracket_end]
+        elif ':' in host:
             host = host.rsplit(':', 1)[0]
         asyncio.run(port_scan(
             host, port_range=args.port_range,

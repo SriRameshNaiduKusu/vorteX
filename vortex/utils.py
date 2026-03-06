@@ -34,15 +34,4 @@ def setup_logging(verbose: bool = False):
     logging.basicConfig(level=level, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
-def build_session_kwargs(proxy=None, timeout=10, random_ua=False, headers=None):
-    """Return kwargs for aiohttp.ClientSession requests."""
-    import random
-    from vortex.user_agents import USER_AGENTS
-    kwargs = {}
-    if proxy:
-        kwargs['proxy'] = proxy
-    if random_ua:
-        kwargs['headers'] = {'User-Agent': random.choice(USER_AGENTS)}
-    if headers:
-        kwargs.setdefault('headers', {}).update(headers)
-    return kwargs
+

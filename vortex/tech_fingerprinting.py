@@ -136,12 +136,20 @@ def analyze_html(html):
             tech.append('Bootstrap JS detected')
             break
 
-    # Tailwind CSS
-    tailwind_classes = ['flex', 'grid', 'text-', 'bg-', 'p-', 'm-', 'w-', 'h-']
+    # Tailwind CSS — use specific color/spacing utility patterns unlikely to appear in other frameworks
+    tailwind_specific = re.compile(
+        r'\b(text-(?:gray|blue|red|green|yellow|purple|pink|indigo)-\d{2,3}|'
+        r'bg-(?:gray|blue|red|green|yellow|purple|pink|indigo)-\d{2,3}|'
+        r'(?:px|py|pt|pb|pl|pr|mx|my|mt|mb|ml|mr)-\d+|'
+        r'(?:w|h)-(?:\d+|full|screen|auto)|'
+        r'rounded-(?:sm|md|lg|xl|full)|'
+        r'shadow-(?:sm|md|lg|xl)|'
+        r'font-(?:thin|light|normal|medium|semibold|bold|extrabold))\b'
+    )
     all_tag_classes = (tag.get('class', []) for tag in soup.find_all(class_=True) if isinstance(tag.get('class'), list))
     flat_classes = ' '.join(cls for classes in all_tag_classes for cls in classes)
-    tailwind_count = sum(1 for c in tailwind_classes if c in flat_classes)
-    if tailwind_count >= 3:
+    tailwind_matches = tailwind_specific.findall(flat_classes)
+    if len(tailwind_matches) >= 3:
         tech.append('Tailwind CSS likely detected')
     for href in all_links:
         if 'tailwind' in href.lower():
@@ -166,19 +174,19 @@ def analyze_html(html):
         tech.append('Joomla detected via generator meta tag')
 
     # Shopify
-    if 'cdn.shopify.com' in html:
+    if re.search(r'cdn\.shopify\.com', html):
         tech.append('Shopify detected')
 
     # Squarespace
-    if 'squarespace' in html.lower() or 'static.squarespace.com' in html:
+    if re.search(r'squarespace', html, re.IGNORECASE) or re.search(r'static\.squarespace\.com', html):
         tech.append('Squarespace detected')
 
     # Wix
-    if 'wix.com' in html or 'X-Wix-Published-Version' in html:
+    if re.search(r'wix\.com', html) or 'X-Wix-Published-Version' in html:
         tech.append('Wix detected')
 
     # Webflow
-    if 'webflow.com' in html or 'Webflow' in html:
+    if re.search(r'webflow\.com', html) or 'Webflow' in html:
         tech.append('Webflow detected')
 
     return tech

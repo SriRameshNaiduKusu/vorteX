@@ -12,7 +12,10 @@ RECORD_TYPES = ['A', 'AAAA', 'MX', 'TXT', 'CNAME', 'NS', 'SOA']
 
 def _parse_txt_record(r):
     if isinstance(r.text, list):
-        return b''.join(r.text).decode('utf-8', errors='replace')
+        parts = [t if isinstance(t, bytes) else t.encode('utf-8') for t in r.text]
+        return b''.join(parts).decode('utf-8', errors='replace')
+    if isinstance(r.text, bytes):
+        return r.text.decode('utf-8', errors='replace')
     return str(r.text)
 
 
