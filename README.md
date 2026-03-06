@@ -115,9 +115,64 @@ echo "https://example.com" | vorteX -all -o report.json --format json
 
 ---
 
-### Built-in Wordlists
+### SecLists Integration
 
-vorteX includes built-in wordlists for all recon tasks:
+vorteX automatically detects [danielmiessler/SecLists](https://github.com/danielmiessler/SecLists) — the industry-standard security wordlist collection — and uses it instead of the bundled wordlists when available. On **Kali Linux** and **Parrot OS**, SecLists is typically pre-installed at `/usr/share/seclists/` and detected with **zero configuration**.
+
+#### Installing SecLists
+
+```bash
+# Kali / Parrot / Debian-based
+apt install seclists
+
+# Or clone manually
+git clone https://github.com/danielmiessler/SecLists ~/SecLists
+```
+
+#### Auto-detection search paths (in order)
+
+| Path | Notes |
+|------|-------|
+| `$SECLISTS_PATH` env var | Highest priority override |
+| `/usr/share/seclists/` | Kali/Parrot default |
+| `/usr/share/SecLists/` | Some distros |
+| `/opt/seclists/` | Manual install |
+| `~/SecLists/` | Git clone |
+
+#### `--wordlist-size` option
+
+Use `--wordlist-size` to trade scan speed for coverage when SecLists is detected:
+
+| Size | Subdomains | Directories | Parameters |
+|------|-----------|-------------|-----------|
+| `small` *(default)* | `subdomains-top1million-5000.txt` | `common.txt` | `burp-parameter-names.txt` |
+| `medium` | `subdomains-top1million-20000.txt` | `raft-medium-directories.txt` | `burp-parameter-names.txt` |
+| `large` | `subdomains-top1million-110000.txt` | `directory-list-2.3-medium.txt` | `burp-parameter-names.txt` |
+
+```bash
+# Use medium SecLists wordlists
+vorteX -d example.com --wordlist-size medium
+
+# Use large wordlists for full recon
+vorteX -all -d example.com --wordlist-size large
+
+# Override the SecLists path manually
+SECLISTS_PATH=/custom/path vorteX -d example.com
+```
+
+When SecLists is **not** found, vorteX falls back to its bundled wordlists and prints a helpful install suggestion:
+
+```
+[*] SecLists not found. Using built-in wordlist: subdomains.txt (347 entries). Install SecLists for better results: apt install seclists
+```
+
+> **User-supplied `-w` always wins** — an explicit wordlist path always overrides both SecLists and bundled defaults.
+
+---
+
+### Built-in Wordlists (fallback)
+
+vorteX includes small bundled wordlists used as fallback when SecLists is not installed:
 
 | Module | Default Wordlist |
 |--------|-----------------|
@@ -128,10 +183,10 @@ vorteX includes built-in wordlists for all recon tasks:
 You can always override with your own wordlist using `-w`:
 
 ```bash
-# Individual modes without -w (uses built-in defaults)
-vorteX -d example.com                                       # built-in subdomain wordlist
-vorteX -fuzz -url https://example.com                       # built-in directory wordlist
-vorteX -paramfuzz -url https://example.com/search           # built-in parameter wordlist
+# Individual modes without -w (uses SecLists or built-in defaults)
+vorteX -d example.com                                       # SecLists or built-in subdomain wordlist
+vorteX -fuzz -url https://example.com                       # SecLists or built-in directory wordlist
+vorteX -paramfuzz -url https://example.com/search           # SecLists or built-in parameter wordlist
 
 # Override with custom wordlist
 vorteX -d example.com -w /path/to/custom-subdomains.txt
