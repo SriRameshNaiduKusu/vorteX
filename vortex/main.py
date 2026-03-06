@@ -152,8 +152,11 @@ def main():
         host = urlparse(target).netloc or target
         port = 443
         if ':' in host:
-            host, port = host.rsplit(':', 1)
-            port = int(port)
+            try:
+                host, port_str = host.rsplit(':', 1)
+                port = int(port_str)
+            except ValueError:
+                pass
         asyncio.run(ssl_check(host, port=port, output_file=args.output, output_format=args.format))
 
     elif args.port_scan:

@@ -10,6 +10,12 @@ from vortex.utils import display_banner
 RECORD_TYPES = ['A', 'AAAA', 'MX', 'TXT', 'CNAME', 'NS', 'SOA']
 
 
+def _parse_txt_record(r):
+    if isinstance(r.text, list):
+        return b''.join(r.text).decode('utf-8', errors='replace')
+    return str(r.text)
+
+
 async def query_record(resolver, domain, record_type):
     try:
         result = await resolver.query(domain, record_type)
@@ -19,7 +25,7 @@ async def query_record(resolver, domain, record_type):
         elif record_type == 'MX':
             records = [f"{r.host} (priority {r.priority})" for r in result]
         elif record_type == 'TXT':
-            records = [b''.join(r.text).decode('utf-8', errors='replace') if isinstance(r.text, list) else str(r.text) for r in result]
+            records = [_parse_txt_record(r) for r in result]
         elif record_type == 'CNAME':
             records = [result.cname]
         elif record_type == 'NS':

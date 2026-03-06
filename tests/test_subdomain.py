@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 def test_resolve_subdomain_success():
     async def run():
         from vortex.subdomain import resolve_subdomain
-        import asyncio
 
         mock_resolver = AsyncMock()
         mock_result = MagicMock()
@@ -22,7 +21,6 @@ def test_resolve_subdomain_success():
 def test_resolve_subdomain_failure():
     async def run():
         from vortex.subdomain import resolve_subdomain
-        import asyncio
 
         mock_resolver = AsyncMock()
         mock_resolver.gethostbyname = AsyncMock(side_effect=Exception("DNS error"))

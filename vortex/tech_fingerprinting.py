@@ -137,9 +137,10 @@ def analyze_html(html):
             break
 
     # Tailwind CSS
-    all_classes = ' '.join(tag.get('class', []) for tag in soup.find_all(class_=True) if isinstance(tag.get('class'), list))
     tailwind_classes = ['flex', 'grid', 'text-', 'bg-', 'p-', 'm-', 'w-', 'h-']
-    tailwind_count = sum(1 for c in tailwind_classes if c in all_classes)
+    all_tag_classes = (tag.get('class', []) for tag in soup.find_all(class_=True) if isinstance(tag.get('class'), list))
+    flat_classes = ' '.join(cls for classes in all_tag_classes for cls in classes)
+    tailwind_count = sum(1 for c in tailwind_classes if c in flat_classes)
     if tailwind_count >= 3:
         tech.append('Tailwind CSS likely detected')
     for href in all_links:
