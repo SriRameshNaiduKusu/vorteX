@@ -7,6 +7,7 @@
 
 ## Features 🚀
 
+- **Full Automated Recon Pipeline** (`-all`) — run every module in one command
 - Subdomain Enumeration (Async DNS Bruteforce)
 - Directory & File Fuzzing (Async Requests)
 - Parameter Discovery
@@ -14,8 +15,12 @@
   - Third-Party Link Finder
   - JavaScript File Discovery
   - JS Endpoint Extraction
-  - NEW: Technology Fingerprinting
-  - NEW: stdin support for tool chaining
+  - Technology Fingerprinting
+  - stdin support for tool chaining
+- DNS Record Enumeration (A, AAAA, MX, TXT, CNAME, NS, SOA)
+- SSL/TLS Certificate Analysis
+- Port Scanning (async, lightweight)
+- Email Harvesting
 
 ---
 
@@ -52,14 +57,56 @@ Options:
   -js                      Discover JS files and endpoints on target(s)
   -tech                    Enable technology fingerprinting on target(s)
   -paramfuzz               Enable parameter discovery on a single URL
+  -dns                     DNS record enumeration for a domain
+  -ssl                     SSL/TLS certificate analysis
+  -ports                   Lightweight async port scanner
+  -emails                  Harvest emails from target URLs
+  -all                     Run ALL recon modules automatically in sequence
 
-  -w WORDLIST              Wordlist to use (for -d, -fuzz, -paramfuzz)
+  -w WORDLIST              Wordlist to use (for -d, -fuzz, -paramfuzz, -all)
   -T THREADS               Number of threads [default: 20]
   -o OUTPUT                Output file to save primary results
   --depth DEPTH            Crawling depth [default: 2]
   --method METHOD          HTTP method for -paramfuzz (GET/POST) [default: GET]
   --headers HEADERS        Custom headers for requests (e.g., "User-Agent:Custom")
-  --format FORMAT          Output format for -paramfuzz (json/txt) [default: txt]
+  --format FORMAT          Output format (json/txt) [default: txt]
+  --proxy PROXY            HTTP/SOCKS proxy URL
+  --rate-limit RATE        Max requests per second
+  --random-ua              Rotate User-Agent strings randomly
+  --timeout TIMEOUT        Request timeout in seconds [default: 10]
+```
+
+---
+
+### Full Automated Recon Pipeline (`-all`)
+
+The `-all` flag runs **every recon module sequentially** in five phases, feeding
+results from earlier phases into later ones. A single consolidated report is
+generated when `-o` is specified.
+
+```
+Phase 1: Reconnaissance & Discovery  → DNS, SSL/TLS, Port Scan
+Phase 2: Subdomain & Surface Expansion → Subdomain Enumeration (requires -w)
+Phase 3: Active Scanning             → Directory Fuzzing (requires -w), Tech Fingerprinting
+Phase 4: Deep Analysis               → Crawling, JS Discovery, Email Harvesting
+Phase 5: Parameter Analysis          → Parameter Fuzzing (requires -w)
+```
+
+```bash
+# Full recon on a domain with wordlist (JSON report)
+vorteX -all -d example.com -w /path/to/wordlist.txt -o full_report.json --format json
+
+# Full recon on a URL (subdomain enum skipped — no -d)
+vorteX -all -url https://example.com -w /path/to/wordlist.txt -o report.txt
+
+# Full recon without wordlist (enum/fuzzing/paramfuzz skipped)
+vorteX -all -url https://example.com -o report.json --format json
+
+# Full recon with proxy and rate limiting
+vorteX -all -d example.com -w wordlist.txt --proxy http://127.0.0.1:8080 --rate-limit 10 --random-ua
+
+# Pipe targets for full recon
+echo "https://example.com" | vorteX -all -w wordlist.txt -o report.json --format json
 ```
 
 ---

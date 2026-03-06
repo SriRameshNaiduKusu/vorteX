@@ -28,6 +28,8 @@ def main():
     parser.add_argument("-ssl", "--ssl-check", action="store_true", help="SSL/TLS certificate analysis")
     parser.add_argument("-ports", "--port-scan", action="store_true", help="Lightweight async port scanner")
     parser.add_argument("-emails", "--harvest-emails", action="store_true", help="Harvest emails from target URLs")
+    parser.add_argument("-all", "--all", action="store_true",
+                        help="Run all recon modules automatically in sequence")
     parser.add_argument("-url", "--target", help="Target URL (required for some modes if not using stdin)")
 
     # Options
@@ -73,7 +75,29 @@ def main():
     )
 
     # --- Mode Logic ---
-    if args.domain and not any([args.dns_enum, args.ssl_check, args.port_scan]):
+    if args.all:
+        from vortex.full_recon import run_full_recon
+        if not targets and not args.domain:
+            print(f"{Fore.RED}[!] No targets specified. Use -url, -d, or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(run_full_recon(
+            targets=targets,
+            domain=args.domain,
+            wordlist=args.wordlist,
+            threads=args.threads,
+            output=args.output,
+            depth=args.depth,
+            method=args.method,
+            headers=headers_dict,
+            output_format=args.format,
+            proxy=args.proxy,
+            rate_limit=args.rate_limit,
+            random_ua=args.random_ua,
+            timeout=args.timeout,
+            verbose=args.verbose,
+        ))
+
+    elif args.domain and not any([args.dns_enum, args.ssl_check, args.port_scan]):
         from vortex.subdomain import enumerate_subdomains
         if not args.wordlist:
             print(f"{Fore.RED}[!] Wordlist required for subdomain enumeration. Use -w.{Style.RESET_ALL}")
