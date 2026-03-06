@@ -55,6 +55,7 @@ async def run_full_recon(
     random_ua,
     timeout,
     verbose,
+    wordlist_size='small',
 ):
     """Run all recon modules sequentially, feeding results forward."""
     scan_start = time.monotonic()
@@ -140,13 +141,19 @@ async def run_full_recon(
     # ── Phase 2: Subdomain & Surface Expansion ────────────────────────────────
     _print_phase_banner("Phase 2: Subdomain & Surface Expansion")
 
-    from vortex.wordlists import DEFAULT_SUBDOMAINS, DEFAULT_DIRECTORIES, DEFAULT_PARAMETERS
+    from vortex.wordlists import get_wordlist_for_size, _SECLISTS_FILES
 
     found_subdomains: list[str] = []
     if domain:
-        subdomain_wordlist = wordlist or DEFAULT_SUBDOMAINS
-        if not wordlist:
-            print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: subdomains.txt{Style.RESET_ALL}")
+        if wordlist:
+            subdomain_wordlist = wordlist
+        else:
+            subdomain_wordlist, from_seclists = get_wordlist_for_size('subdomains', wordlist_size)
+            if from_seclists:
+                relative = _SECLISTS_FILES['subdomains'][wordlist_size]
+                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative}{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: subdomains.txt{Style.RESET_ALL}")
         t0 = time.monotonic()
         try:
             from vortex.subdomain import enumerate_subdomains
@@ -174,9 +181,15 @@ async def run_full_recon(
 
     fuzzed_urls: list[str] = []
     if all_discovered_urls:
-        dir_wordlist = wordlist or DEFAULT_DIRECTORIES
-        if not wordlist:
-            print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: directories.txt{Style.RESET_ALL}")
+        if wordlist:
+            dir_wordlist = wordlist
+        else:
+            dir_wordlist, from_seclists = get_wordlist_for_size('directories', wordlist_size)
+            if from_seclists:
+                relative = _SECLISTS_FILES['directories'][wordlist_size]
+                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative}{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: directories.txt{Style.RESET_ALL}")
         t0 = time.monotonic()
         try:
             from vortex.fuzzer import directory_fuzzing
@@ -271,9 +284,15 @@ async def run_full_recon(
     _print_phase_banner("Phase 5: Parameter Analysis")
 
     if url_list:
-        param_wordlist = wordlist or DEFAULT_PARAMETERS
-        if not wordlist:
-            print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: parameters.txt{Style.RESET_ALL}")
+        if wordlist:
+            param_wordlist = wordlist
+        else:
+            param_wordlist, from_seclists = get_wordlist_for_size('parameters', wordlist_size)
+            if from_seclists:
+                relative = _SECLISTS_FILES['parameters'][wordlist_size]
+                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative}{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: parameters.txt{Style.RESET_ALL}")
         t0 = time.monotonic()
         try:
             from vortex.param_fuzzer import parameter_discovery

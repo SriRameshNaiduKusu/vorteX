@@ -5,13 +5,49 @@ from colorama import Fore, Style, init
 from urllib.parse import urlparse
 
 from vortex.utils import display_banner, setup_logging, VERSION
-from vortex.wordlists import DEFAULT_SUBDOMAINS, DEFAULT_DIRECTORIES, DEFAULT_PARAMETERS
+from vortex.wordlists import (
+    get_wordlist_for_size,
+    _SECLISTS_FILES,
+)
 
 
 def _count_lines(path):
     """Return the number of non-empty lines in a file."""
     with open(path) as fh:
         return sum(1 for line in fh if line.strip())
+
+
+def _resolve_wordlist(module, size, explicit_wordlist):
+    """Return (wordlist_path, already_printed_message) for *module*.
+
+    If the user supplied an explicit ``-w`` path, that takes priority.
+    Otherwise tries SecLists, then falls back to bundled wordlists, printing
+    an informative status message either way.
+    """
+    if explicit_wordlist:
+        return explicit_wordlist
+
+    path, from_seclists = get_wordlist_for_size(module, size)
+    count = _count_lines(path)
+
+    if from_seclists:
+        relative = _SECLISTS_FILES.get(module, {}).get(size, path)
+        print(
+            f"{Fore.CYAN}[*] Using SecLists ({size}): {relative} ({count} entries){Style.RESET_ALL}"
+        )
+    else:
+        bundled_name = {
+            'subdomains': 'subdomains.txt',
+            'directories': 'directories.txt',
+            'parameters': 'parameters.txt',
+        }.get(module, 'wordlist.txt')
+        print(
+            f"{Fore.CYAN}[*] SecLists not found. Using built-in wordlist: {bundled_name} ({count} entries). "
+            f"Install SecLists for better results: apt install seclists  "
+            f"or: git clone https://github.com/danielmiessler/SecLists ~/SecLists{Style.RESET_ALL}"
+        )
+
+    return path
 
 init(autoreset=True)
 
@@ -41,6 +77,8 @@ def main():
 
     # Options
     parser.add_argument("-w", "--wordlist", help="Wordlist for enumeration, fuzzing, or paramfuzz")
+    parser.add_argument("--wordlist-size", choices=["small", "medium", "large"], default="small",
+                        help="SecLists wordlist size tier: small (default), medium, or large")
     parser.add_argument("-T", "--threads", type=int, default=20, help="Number of concurrent threads/tasks")
     parser.add_argument("-o", "--output", help="Save primary results to a file")
     parser.add_argument("--depth", type=int, default=2, help="Crawling depth for -js, -crawl, and -emails")
@@ -91,6 +129,7 @@ def main():
             targets=targets,
             domain=args.domain,
             wordlist=args.wordlist,
+            wordlist_size=args.wordlist_size,
             threads=args.threads,
             output=args.output,
             depth=args.depth,
@@ -106,9 +145,7 @@ def main():
 
     elif args.domain and not any([args.dns_enum, args.ssl_check, args.port_scan]):
         from vortex.subdomain import enumerate_subdomains
-        wordlist = args.wordlist or DEFAULT_SUBDOMAINS
-        if not args.wordlist:
-            print(f"{Fore.CYAN}[*] No wordlist specified. Using built-in default: subdomains.txt ({_count_lines(wordlist)} entries){Style.RESET_ALL}")
+        wordlist = _resolve_wordlist('subdomains', args.wordlist_size, args.wordlist)
         found_urls = asyncio.run(enumerate_subdomains(
             args.domain, wordlist, args.threads, args.output,
             output_format=args.format, **common_kwargs
@@ -120,9 +157,7 @@ def main():
 
     elif args.fuzzing:
         from vortex.fuzzer import directory_fuzzing
-        wordlist = args.wordlist or DEFAULT_DIRECTORIES
-        if not args.wordlist:
-            print(f"{Fore.CYAN}[*] No wordlist specified. Using built-in default: directories.txt ({_count_lines(wordlist)} entries){Style.RESET_ALL}")
+        wordlist = _resolve_wordlist('directories', args.wordlist_size, args.wordlist)
         if not targets:
             print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
             sys.exit(1)
@@ -154,9 +189,7 @@ def main():
         if not targets:
             print(f"{Fore.RED}[!] Target URL (-url) is required for parameter fuzzing.{Style.RESET_ALL}")
             sys.exit(1)
-        wordlist = args.wordlist or DEFAULT_PARAMETERS
-        if not args.wordlist:
-            print(f"{Fore.CYAN}[*] No wordlist specified. Using built-in default: parameters.txt ({_count_lines(wordlist)} entries){Style.RESET_ALL}")
+        wordlist = _resolve_wordlist('parameters', args.wordlist_size, args.wordlist)
         asyncio.run(parameter_discovery(
             targets[0], args.method, headers_dict, wordlist, args.output, args.format,
             max_threads=args.threads, **common_kwargs
