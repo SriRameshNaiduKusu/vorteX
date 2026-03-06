@@ -140,15 +140,20 @@ async def run_full_recon(
     # ── Phase 2: Subdomain & Surface Expansion ────────────────────────────────
     _print_phase_banner("Phase 2: Subdomain & Surface Expansion")
 
+    from vortex.wordlists import DEFAULT_SUBDOMAINS, DEFAULT_DIRECTORIES, DEFAULT_PARAMETERS
+
     found_subdomains: list[str] = []
-    if domain and wordlist:
+    if domain:
+        subdomain_wordlist = wordlist or DEFAULT_SUBDOMAINS
+        if not wordlist:
+            print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: subdomains.txt{Style.RESET_ALL}")
         t0 = time.monotonic()
         try:
             from vortex.subdomain import enumerate_subdomains
 
             found_subdomains = await enumerate_subdomains(
                 domain,
-                wordlist,
+                subdomain_wordlist,
                 threads,
                 output_file=None,
                 output_format=output_format,
@@ -161,23 +166,24 @@ async def run_full_recon(
             logging.warning(f"Subdomain enumeration failed: {exc}")
             print(f"{Fore.YELLOW}[⚠] Subdomain enumeration failed: {exc}. Continuing...{Style.RESET_ALL}")
             failed_modules.append("subdomains")
-    elif not wordlist:
-        print(f"{Fore.YELLOW}[ℹ] No wordlist provided — skipping subdomain enumeration.{Style.RESET_ALL}")
-    elif not domain:
+    else:
         print(f"{Fore.YELLOW}[ℹ] No domain provided — skipping subdomain enumeration.{Style.RESET_ALL}")
 
     # ── Phase 3: Active Scanning ──────────────────────────────────────────────
     _print_phase_banner("Phase 3: Active Scanning")
 
     fuzzed_urls: list[str] = []
-    if wordlist and all_discovered_urls:
+    if all_discovered_urls:
+        dir_wordlist = wordlist or DEFAULT_DIRECTORIES
+        if not wordlist:
+            print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: directories.txt{Style.RESET_ALL}")
         t0 = time.monotonic()
         try:
             from vortex.fuzzer import directory_fuzzing
 
             fuzzed_urls = await directory_fuzzing(
                 list(all_discovered_urls),
-                wordlist,
+                dir_wordlist,
                 threads,
                 output_file=None,
                 output_format=output_format,
@@ -190,8 +196,6 @@ async def run_full_recon(
             logging.warning(f"Directory fuzzing failed: {exc}")
             print(f"{Fore.YELLOW}[⚠] Directory fuzzing failed: {exc}. Continuing...{Style.RESET_ALL}")
             failed_modules.append("fuzzing")
-    elif not wordlist:
-        print(f"{Fore.YELLOW}[ℹ] No wordlist provided — skipping directory fuzzing.{Style.RESET_ALL}")
 
     # Technology Fingerprinting
     tech_count = 0
@@ -266,7 +270,10 @@ async def run_full_recon(
     # ── Phase 5: Parameter Analysis ───────────────────────────────────────────
     _print_phase_banner("Phase 5: Parameter Analysis")
 
-    if wordlist and url_list:
+    if url_list:
+        param_wordlist = wordlist or DEFAULT_PARAMETERS
+        if not wordlist:
+            print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: parameters.txt{Style.RESET_ALL}")
         t0 = time.monotonic()
         try:
             from vortex.param_fuzzer import parameter_discovery
@@ -275,7 +282,7 @@ async def run_full_recon(
                 url_list[0],
                 method,
                 headers,
-                wordlist,
+                param_wordlist,
                 output_file=None,
                 output_format=output_format,
                 max_threads=threads,
@@ -288,7 +295,7 @@ async def run_full_recon(
             print(f"{Fore.YELLOW}[⚠] Parameter fuzzing failed: {exc}. Continuing...{Style.RESET_ALL}")
             failed_modules.append("params")
     else:
-        print(f"{Fore.YELLOW}[ℹ] No wordlist provided — skipping parameter fuzzing.{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}[ℹ] No targets available — skipping parameter fuzzing.{Style.RESET_ALL}")
 
     # ── Scan Summary ──────────────────────────────────────────────────────────
     scan_duration = time.monotonic() - scan_start

@@ -221,11 +221,12 @@ def test_consolidated_json_report():
 
 
 # ---------------------------------------------------------------------------
-# Test: wordlist-dependent modules are skipped when no wordlist is provided
+# Test: wordlist-dependent modules now use defaults when no wordlist provided
 # ---------------------------------------------------------------------------
 
-def test_wordlist_dependent_modules_skipped_without_wordlist():
-    """subdomain enum, fuzzing, and paramfuzz must NOT be called when wordlist=None."""
+def test_wordlist_dependent_modules_use_defaults_without_wordlist():
+    """With no user wordlist, subdomain enum, fuzzing, and paramfuzz should
+    still be called using the built-in default wordlists (not skipped)."""
 
     async def run():
         from vortex import full_recon as fr
@@ -249,7 +250,7 @@ def test_wordlist_dependent_modules_skipped_without_wordlist():
             await fr.run_full_recon(
                 targets=["https://example.com"],
                 domain="example.com",
-                wordlist=None,       # <-- no wordlist
+                wordlist=None,       # <-- no wordlist: defaults should kick in
                 threads=5,
                 output=None,
                 depth=1,
@@ -263,8 +264,9 @@ def test_wordlist_dependent_modules_skipped_without_wordlist():
                 verbose=False,
             )
 
-        _subdomains.assert_not_awaited()
-        _fuzz.assert_not_awaited()
-        _params.assert_not_awaited()
+        # All three should be awaited using built-in defaults
+        _subdomains.assert_awaited_once()
+        _fuzz.assert_awaited_once()
+        _params.assert_awaited_once()
 
     asyncio.run(run())

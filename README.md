@@ -7,7 +7,8 @@
 
 ## Features 🚀
 
-- **Full Automated Recon Pipeline** (`-all`) — run every module in one command
+- **Full Automated Recon Pipeline** (`-all`) — run every module in one command, **zero config needed**
+- **Built-in Wordlists** — bundled default wordlists for subdomain enumeration, directory fuzzing, and parameter discovery; no `-w` required
 - Subdomain Enumeration (Async DNS Bruteforce)
 - Directory & File Fuzzing (Async Requests)
 - Parameter Discovery
@@ -63,7 +64,7 @@ Options:
   -emails                  Harvest emails from target URLs
   -all                     Run ALL recon modules automatically in sequence
 
-  -w WORDLIST              Wordlist to use (for -d, -fuzz, -paramfuzz, -all)
+  -w WORDLIST              Wordlist to use (optional — built-in defaults used when omitted)
   -T THREADS               Number of threads [default: 20]
   -o OUTPUT                Output file to save primary results
   --depth DEPTH            Crawling depth [default: 2]
@@ -84,29 +85,57 @@ The `-all` flag runs **every recon module sequentially** in five phases, feeding
 results from earlier phases into later ones. A single consolidated report is
 generated when `-o` is specified.
 
+vorteX ships with built-in wordlists, so **`-w` is completely optional**. When
+`-w` is omitted, each phase automatically uses the appropriate built-in default:
+
 ```
 Phase 1: Reconnaissance & Discovery  → DNS, SSL/TLS, Port Scan
-Phase 2: Subdomain & Surface Expansion → Subdomain Enumeration (requires -w)
-Phase 3: Active Scanning             → Directory Fuzzing (requires -w), Tech Fingerprinting
+Phase 2: Subdomain & Surface Expansion → Subdomain Enumeration (built-in subdomains.txt)
+Phase 3: Active Scanning             → Directory Fuzzing (built-in directories.txt), Tech Fingerprinting
 Phase 4: Deep Analysis               → Crawling, JS Discovery, Email Harvesting
-Phase 5: Parameter Analysis          → Parameter Fuzzing (requires -w)
+Phase 5: Parameter Analysis          → Parameter Fuzzing (built-in parameters.txt)
 ```
 
 ```bash
-# Full recon on a domain with wordlist (JSON report)
+# Full auto recon — zero config needed! 🔥
+vorteX -all -d example.com -o report.json --format json
+
+# Full recon on a domain with custom wordlist (JSON report)
 vorteX -all -d example.com -w /path/to/wordlist.txt -o full_report.json --format json
 
 # Full recon on a URL (subdomain enum skipped — no -d)
-vorteX -all -url https://example.com -w /path/to/wordlist.txt -o report.txt
-
-# Full recon without wordlist (enum/fuzzing/paramfuzz skipped)
-vorteX -all -url https://example.com -o report.json --format json
+vorteX -all -url https://example.com -o report.txt
 
 # Full recon with proxy and rate limiting
-vorteX -all -d example.com -w wordlist.txt --proxy http://127.0.0.1:8080 --rate-limit 10 --random-ua
+vorteX -all -d example.com --proxy http://127.0.0.1:8080 --rate-limit 10 --random-ua
 
 # Pipe targets for full recon
-echo "https://example.com" | vorteX -all -w wordlist.txt -o report.json --format json
+echo "https://example.com" | vorteX -all -o report.json --format json
+```
+
+---
+
+### Built-in Wordlists
+
+vorteX includes built-in wordlists for all recon tasks:
+
+| Module | Default Wordlist |
+|--------|-----------------|
+| Subdomain enumeration (`-d`) | `subdomains.txt` |
+| Directory fuzzing (`-fuzz`) | `directories.txt` |
+| Parameter discovery (`-paramfuzz`) | `parameters.txt` |
+
+You can always override with your own wordlist using `-w`:
+
+```bash
+# Individual modes without -w (uses built-in defaults)
+vorteX -d example.com                                       # built-in subdomain wordlist
+vorteX -fuzz -url https://example.com                       # built-in directory wordlist
+vorteX -paramfuzz -url https://example.com/search           # built-in parameter wordlist
+
+# Override with custom wordlist
+vorteX -d example.com -w /path/to/custom-subdomains.txt
+vorteX -fuzz -url https://example.com -w /path/to/dirs.txt
 ```
 
 ---
@@ -135,6 +164,10 @@ cat my_urls.txt | vorteX -js
 ### Subdomain Enumeration + Tech Fingerprinting
 
 ```bash
+# Uses built-in subdomain wordlist by default
+vorteX -d example.com -o subdomains.txt -tech
+
+# Or specify a custom wordlist
 vorteX -d example.com -w /path/to/subdomain-wordlist.txt -o subdomains.txt -tech
 ```
 
@@ -143,6 +176,10 @@ vorteX -d example.com -w /path/to/subdomain-wordlist.txt -o subdomains.txt -tech
 ### Directory Fuzzing + Tech Fingerprinting
 
 ```bash
+# Uses built-in directory wordlist by default
+vorteX -url https://example.com -fuzz -o directories.txt -tech
+
+# Or specify a custom wordlist
 vorteX -url https://example.com -w /path/to/directory-wordlist.txt -fuzz -o directories.txt -tech
 ```
 
@@ -167,6 +204,10 @@ vorteX -js https://example.com --depth 3 -o js-links.txt
 ### Parameter Discovery
 
 ```bash
+# Uses built-in parameter wordlist by default
+vorteX -paramfuzz -url https://example.com/search --method GET --format json -o params.json
+
+# Or specify a custom wordlist
 vorteX -paramfuzz -url https://example.com/search -w /path/to/param-wordlist.txt --method GET --headers "User-Agent:Mozilla/5.0" --format json -o params.json
 ```
 ---

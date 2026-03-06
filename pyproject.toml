@@ -33,6 +33,9 @@ vorteX = "vortex.main:main"
 where = ["."]
 include = ["vortex*"]
 
+[tool.setuptools.package-data]
+vortex = ["wordlists/*.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
