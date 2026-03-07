@@ -131,7 +131,6 @@ async def check_cors(
 
     all_findings = []
     sem = asyncio.Semaphore(max_threads)
-    connector = aiohttp.TCPConnector(ssl=False)
 
     async def handle(url):
         if stop_event.is_set():
@@ -154,8 +153,7 @@ async def check_cors(
             if rate_limit:
                 await asyncio.sleep(1.0 / rate_limit)
 
-    async with aiohttp.ClientSession(connector=connector):
-        await asyncio.gather(*[handle(u) for u in urls])
+    await asyncio.gather(*[handle(u) for u in urls])
 
     if not all_findings:
         print(f"{Fore.GREEN}[✔] No CORS misconfigurations detected.{Style.RESET_ALL}")

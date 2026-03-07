@@ -123,7 +123,6 @@ async def check_takeover(
         loop = asyncio.get_event_loop()
         resolver = aiodns.DNSResolver(loop=loop)
 
-    connector = aiohttp.TCPConnector(ssl=False)
     sem = asyncio.Semaphore(max_threads)
 
     async def check_one(subdomain):
@@ -172,9 +171,8 @@ async def check_takeover(
             if rate_limit:
                 await asyncio.sleep(1.0 / rate_limit)
 
-    async with aiohttp.ClientSession(connector=connector):
-        tasks = [check_one(s) for s in clean]
-        await asyncio.gather(*tasks)
+    tasks = [check_one(s) for s in clean]
+    await asyncio.gather(*tasks)
 
     if not findings:
         print(f"{Fore.GREEN}[✔] No takeover vulnerabilities detected.{Style.RESET_ALL}")

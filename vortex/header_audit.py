@@ -137,7 +137,6 @@ async def audit_headers(
 
     results = []
     sem = asyncio.Semaphore(max_threads)
-    connector = aiohttp.TCPConnector(ssl=False)
 
     async def handle(url):
         if stop_event.is_set():
@@ -150,8 +149,7 @@ async def audit_headers(
             if rate_limit:
                 await asyncio.sleep(1.0 / rate_limit)
 
-    async with aiohttp.ClientSession(connector=connector):
-        await asyncio.gather(*[handle(u) for u in urls])
+    await asyncio.gather(*[handle(u) for u in urls])
 
     if output_file and results:
         with open(output_file, "w") as fh:
