@@ -316,6 +316,169 @@ async def run_full_recon(
     else:
         print(f"{Fore.YELLOW}[ℹ] No targets available — skipping parameter fuzzing.{Style.RESET_ALL}")
 
+    # ── Phase 6: Passive Recon (CT Logs & Wayback) ────────────────────────────
+    _print_phase_banner("Phase 6: Passive Recon (CT Logs & Wayback)")
+
+    if domain:
+        # Certificate Transparency log mining
+        t0 = time.monotonic()
+        try:
+            from vortex.ct_enum import ct_search
+
+            ct_subdomains = await ct_search(
+                domain,
+                output_file=None,
+                output_format=output_format,
+                **common_kwargs,
+            )
+            all_results["ct_subdomains"] = ct_subdomains
+            all_discovered_urls.update(f"https://{s}" for s in ct_subdomains)
+            _print_phase_summary("CT log subdomains", len(ct_subdomains), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"CT log mining failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] CT log mining failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("ct")
+
+        # Wayback Machine URL mining
+        t0 = time.monotonic()
+        try:
+            from vortex.wayback import wayback_enum
+
+            wayback_urls = await wayback_enum(
+                domain,
+                output_file=None,
+                output_format=output_format,
+                **common_kwargs,
+            )
+            all_results["wayback_urls"] = wayback_urls
+            _print_phase_summary("Wayback URLs", len(wayback_urls), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"Wayback mining failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] Wayback mining failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("wayback")
+    else:
+        print(f"{Fore.YELLOW}[ℹ] No domain provided — skipping CT log and Wayback mining.{Style.RESET_ALL}")
+
+    # ── Phase 7: Vulnerability Scanning ──────────────────────────────────────
+    _print_phase_banner("Phase 7: Vulnerability Scanning")
+
+    active_url_list = list(all_discovered_urls)
+
+    # Subdomain takeover
+    if found_subdomains:
+        t0 = time.monotonic()
+        try:
+            from vortex.takeover import check_takeover
+
+            takeover_findings = await check_takeover(
+                found_subdomains,
+                output_file=None,
+                output_format=output_format,
+                **common_kwargs,
+            )
+            all_results["takeover"] = takeover_findings
+            _print_phase_summary("Takeover findings", len(takeover_findings), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"Takeover scan failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] Takeover scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("takeover")
+
+    # CORS scan
+    if active_url_list:
+        t0 = time.monotonic()
+        try:
+            from vortex.cors_scanner import check_cors
+
+            cors_findings = await check_cors(
+                active_url_list,
+                output_file=None,
+                output_format=output_format,
+                **common_kwargs,
+            )
+            all_results["cors"] = cors_findings
+            _print_phase_summary("CORS findings", len(cors_findings), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"CORS scan failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] CORS scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("cors")
+
+    # Sensitive file detection
+    if active_url_list:
+        t0 = time.monotonic()
+        try:
+            from vortex.sensitive_files import scan_sensitive_files
+
+            sensitive_findings = await scan_sensitive_files(
+                active_url_list,
+                output_file=None,
+                output_format=output_format,
+                **common_kwargs,
+            )
+            all_results["sensitive"] = sensitive_findings
+            _print_phase_summary("Sensitive files", len(sensitive_findings), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"Sensitive file scan failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] Sensitive file scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("sensitive")
+
+    # Security header audit
+    if active_url_list:
+        t0 = time.monotonic()
+        try:
+            from vortex.header_audit import audit_headers
+
+            header_results = await audit_headers(
+                active_url_list,
+                output_file=None,
+                output_format=output_format,
+                **common_kwargs,
+            )
+            all_results["headers"] = header_results
+            _print_phase_summary("Header audits", len(header_results), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"Header audit failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] Header audit failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("headers")
+
+    # Open redirect detection
+    if active_url_list:
+        t0 = time.monotonic()
+        try:
+            from vortex.open_redirect import check_open_redirect
+
+            redirect_findings = await check_open_redirect(
+                active_url_list,
+                output_file=None,
+                output_format=output_format,
+                **common_kwargs,
+            )
+            all_results["redirects"] = redirect_findings
+            _print_phase_summary("Open redirect findings", len(redirect_findings), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"Open redirect scan failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] Open redirect scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("redirects")
+
+    # API endpoint discovery
+    if active_url_list:
+        t0 = time.monotonic()
+        try:
+            from vortex.api_discovery import discover_api_endpoints
+
+            api_results = await discover_api_endpoints(
+                active_url_list,
+                output_file=None,
+                output_format=output_format,
+                **common_kwargs,
+            )
+            all_results["api"] = api_results
+            api_count = len(api_results.get("found_endpoints", []))
+            _print_phase_summary("API endpoints found", api_count, time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"API discovery failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] API discovery failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("api")
+
     # ── Scan Summary ──────────────────────────────────────────────────────────
     scan_duration = time.monotonic() - scan_start
     _print_phase_banner("Scan Summary")
@@ -325,14 +488,30 @@ async def run_full_recon(
         "total_directories": len(all_results.get("fuzzing", [])),
         "total_emails": len(all_results.get("emails", [])),
         "total_technologies": tech_count,
+        "ct_subdomains": len(all_results.get("ct_subdomains", [])),
+        "wayback_urls": len(all_results.get("wayback_urls", [])),
+        "takeover_findings": len(all_results.get("takeover", [])),
+        "cors_findings": len(all_results.get("cors", [])),
+        "sensitive_findings": len(all_results.get("sensitive", [])),
+        "header_audits": len(all_results.get("headers", [])),
+        "redirect_findings": len(all_results.get("redirects", [])),
+        "api_endpoints": len((all_results.get("api") or {}).get("found_endpoints", [])),
         "scan_duration": _format_duration(scan_duration),
         "failed_modules": failed_modules,
     }
 
     print(f"{Fore.CYAN}  Subdomains found   : {summary['total_subdomains']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  CT log subdomains  : {summary['ct_subdomains']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  Wayback URLs       : {summary['wayback_urls']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  Directories found  : {summary['total_directories']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  Emails found       : {summary['total_emails']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  Technologies ID'd  : {summary['total_technologies']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  Takeover findings  : {summary['takeover_findings']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  CORS findings      : {summary['cors_findings']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  Sensitive files    : {summary['sensitive_findings']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  Header audits      : {summary['header_audits']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  Open redirects     : {summary['redirect_findings']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  API endpoints      : {summary['api_endpoints']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  Scan duration      : {summary['scan_duration']}{Style.RESET_ALL}")
     if failed_modules:
         print(f"{Fore.YELLOW}  Failed modules     : {', '.join(failed_modules)}{Style.RESET_ALL}")
@@ -349,6 +528,8 @@ async def run_full_recon(
                 "ssl": all_results.get("ssl", {}),
                 "ports": all_results.get("ports", {}),
                 "subdomains": all_results.get("subdomains", []),
+                "ct_subdomains": all_results.get("ct_subdomains", []),
+                "wayback_urls": all_results.get("wayback_urls", []),
                 "fuzzing": all_results.get("fuzzing", []),
                 "tech_fingerprint": {
                     url: techs
@@ -359,6 +540,12 @@ async def run_full_recon(
                 "js_endpoints": list((all_results.get("js") or {}).get("endpoints", [])),
                 "emails": all_results.get("emails", []),
                 "parameters": all_results.get("params", {}),
+                "takeover": all_results.get("takeover", []),
+                "cors": all_results.get("cors", []),
+                "sensitive": all_results.get("sensitive", []),
+                "headers": all_results.get("headers", []),
+                "redirects": all_results.get("redirects", []),
+                "api": all_results.get("api", {}),
             },
             "summary": summary,
         }
