@@ -2,13 +2,16 @@ import asyncio
 import logging
 import re
 import json
+import warnings
 import aiohttp
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from tqdm.asyncio import tqdm
 from colorama import Fore, Style
 
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-async def fetch(session, url, proxy=None, timeout=10, random_ua=False):
+
+async def fetch(session, url, proxy=None, timeout=10, random_ua=False, rate_limit=None):
     import random
     from vortex.user_agents import USER_AGENTS
     req_kwargs = {}
@@ -23,6 +26,8 @@ async def fetch(session, url, proxy=None, timeout=10, random_ua=False):
             text = await response.text(errors='ignore')
             headers_resp = response.headers
             cookies = response.cookies
+            if rate_limit:
+                await asyncio.sleep(1.0 / rate_limit)
             return url, headers_resp, text, cookies
     except Exception as e:
         logging.debug(f"Error fetching {url}: {e}")
@@ -210,8 +215,8 @@ def analyze_cookies(cookies):
     return tech
 
 
-async def fingerprint_url(session, url, results, proxy=None, timeout=10, random_ua=False):
-    url, headers, html, cookies = await fetch(session, url, proxy=proxy, timeout=timeout, random_ua=random_ua)
+async def fingerprint_url(session, url, results, proxy=None, timeout=10, random_ua=False, rate_limit=None):
+    url, headers, html, cookies = await fetch(session, url, proxy=proxy, timeout=timeout, random_ua=random_ua, rate_limit=rate_limit)
     tech = analyze_headers(headers)
     tech += analyze_html(html)
     tech += analyze_cookies(cookies)
@@ -227,12 +232,12 @@ async def fingerprint_url(session, url, results, proxy=None, timeout=10, random_
 
 async def fingerprint_technologies(urls, output_file='fingerprint_results.txt',
                                     output_format='txt', proxy=None, timeout=10,
-                                    random_ua=False, max_threads=20):
+                                    random_ua=False, max_threads=20, rate_limit=None):
     results = {}
     connector = aiohttp.TCPConnector(limit=max_threads)
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [fingerprint_url(session, url, results, proxy=proxy, timeout=timeout,
-                                  random_ua=random_ua)
+                                  random_ua=random_ua, rate_limit=rate_limit)
                  for url in tqdm(urls, desc="Tech Fingerprinting")]
         await asyncio.gather(*tasks)
 

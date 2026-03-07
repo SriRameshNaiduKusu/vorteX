@@ -1,4 +1,39 @@
-from vortex.tech_fingerprinting import analyze_headers, analyze_html, analyze_cookies
+import asyncio
+import inspect
+from unittest.mock import AsyncMock, patch
+
+from vortex.tech_fingerprinting import analyze_headers, analyze_html, analyze_cookies, fingerprint_technologies
+
+
+def test_fingerprint_technologies_accepts_rate_limit():
+    """fingerprint_technologies must accept a rate_limit keyword argument."""
+    sig = inspect.signature(fingerprint_technologies)
+    assert 'rate_limit' in sig.parameters, (
+        "fingerprint_technologies() must accept a 'rate_limit' parameter"
+    )
+
+
+def test_fingerprint_technologies_rate_limit_default_none():
+    """rate_limit parameter must default to None."""
+    sig = inspect.signature(fingerprint_technologies)
+    assert sig.parameters['rate_limit'].default is None
+
+
+def test_fingerprint_technologies_called_with_common_kwargs():
+    """Calling fingerprint_technologies with a rate_limit kwarg must not raise TypeError."""
+    common_kwargs = dict(proxy=None, timeout=10, random_ua=False, rate_limit=10)
+
+    async def run():
+        with patch('vortex.tech_fingerprinting.aiohttp.ClientSession') as mock_session_cls:
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_session.get = AsyncMock()
+            # Empty URL list — just verify no TypeError is raised
+            result = await fingerprint_technologies([], output_file=None, **common_kwargs)
+            assert isinstance(result, dict)
+
+    asyncio.run(run())
 
 
 def test_analyze_headers_basic():
