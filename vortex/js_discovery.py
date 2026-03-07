@@ -1,12 +1,15 @@
 import asyncio
 import logging
 import re
+import warnings
 import aiohttp
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from urllib.parse import urlparse, urljoin
 from colorama import Fore, Style
 
 from vortex.utils import stop_event, display_banner
+
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 
 async def fetch_and_extract_js_links(js_url, session, proxy=None, timeout=10):
