@@ -74,6 +74,22 @@ def main():
     parser.add_argument("-all", "--all", action="store_true",
                         help="Run all recon modules automatically in sequence")
     parser.add_argument("-url", "--target", help="Target URL (required for some modes if not using stdin)")
+    parser.add_argument("-takeover", "--takeover", action="store_true",
+                        help="Check subdomains for takeover vulnerabilities")
+    parser.add_argument("-ct", "--ct-enum", action="store_true",
+                        help="Mine Certificate Transparency logs for subdomains (crt.sh)")
+    parser.add_argument("-wayback", "--wayback", action="store_true",
+                        help="Mine Wayback Machine for historical URLs")
+    parser.add_argument("-cors", "--cors-scan", action="store_true",
+                        help="Scan for CORS misconfigurations")
+    parser.add_argument("-sensitive", "--sensitive-files", action="store_true",
+                        help="Check for exposed sensitive files and paths")
+    parser.add_argument("-header-audit", "--header-audit", action="store_true",
+                        help="Audit HTTP security headers and provide a grade (A-F)")
+    parser.add_argument("-redirect", "--open-redirect", action="store_true",
+                        help="Test for open redirect vulnerabilities")
+    parser.add_argument("-api", "--api-discovery", action="store_true",
+                        help="Discover API endpoints, GraphQL, and OpenAPI specs")
 
     # Options
     parser.add_argument("-w", "--wordlist", help="Wordlist for enumeration, fuzzing, or paramfuzz")
@@ -260,6 +276,92 @@ def main():
         asyncio.run(harvest_emails(
             targets, depth=args.depth, output_file=args.output,
             output_format=args.format, **common_kwargs
+        ))
+
+    elif args.takeover:
+        from vortex.takeover import check_takeover
+        subdomains = targets[:]
+        if args.domain:
+            # Run subdomain enum first, then check takeover
+            from vortex.subdomain import enumerate_subdomains
+            wordlist = _resolve_wordlist('subdomains', args.wordlist_size, args.wordlist)
+            found = asyncio.run(enumerate_subdomains(
+                args.domain, wordlist, args.threads, None,
+                output_format=args.format, **common_kwargs
+            ))
+            subdomains.extend(found)
+        if not subdomains:
+            print(f"{Fore.RED}[!] No subdomains to check. Use -d or -url.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(check_takeover(
+            subdomains, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, **common_kwargs
+        ))
+
+    elif args.ct_enum:
+        from vortex.ct_enum import ct_search
+        domain = args.domain or (urlparse(targets[0]).netloc if targets else None)
+        if not domain:
+            print(f"{Fore.RED}[!] Domain required for CT log mining. Use -d or -url.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(ct_search(domain, output_file=args.output, output_format=args.format, **common_kwargs))
+
+    elif args.wayback:
+        from vortex.wayback import wayback_enum
+        domain = args.domain or (urlparse(targets[0]).netloc if targets else None)
+        if not domain:
+            print(f"{Fore.RED}[!] Domain required for Wayback mining. Use -d or -url.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(wayback_enum(domain, output_file=args.output, output_format=args.format, **common_kwargs))
+
+    elif args.cors_scan:
+        from vortex.cors_scanner import check_cors
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(check_cors(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, **common_kwargs
+        ))
+
+    elif args.sensitive_files:
+        from vortex.sensitive_files import scan_sensitive_files
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(scan_sensitive_files(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, **common_kwargs
+        ))
+
+    elif args.header_audit:
+        from vortex.header_audit import audit_headers
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(audit_headers(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, **common_kwargs
+        ))
+
+    elif args.open_redirect:
+        from vortex.open_redirect import check_open_redirect
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(check_open_redirect(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, **common_kwargs
+        ))
+
+    elif args.api_discovery:
+        from vortex.api_discovery import discover_api_endpoints
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(discover_api_endpoints(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, **common_kwargs
         ))
 
     else:

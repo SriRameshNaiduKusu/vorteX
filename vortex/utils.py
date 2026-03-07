@@ -10,7 +10,7 @@ init(autoreset=True)
 
 stop_event = threading.Event()
 
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 
 
 def signal_handler(sig, frame):

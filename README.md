@@ -2,6 +2,7 @@
 
 > Advanced Asynchronous Reconnaissance Tool For Bug Bounty Hunters & Pentesters  
 > Developed with Async Python | Clean CLI Based | Fast & Efficient  
+> **v3.0.0** — Comprehensive Bug Bounty Recon Platform
 
 ---
 
@@ -9,7 +10,16 @@
 
 - **Full Automated Recon Pipeline** (`-all`) — run every module in one command, **zero config needed**
 - **Built-in Wordlists** — bundled default wordlists for subdomain enumeration, directory fuzzing, and parameter discovery; no `-w` required
+- **SecLists Auto-Detection** — automatically uses SecLists wordlists when installed
 - Subdomain Enumeration (Async DNS Bruteforce)
+- **Subdomain Takeover Detection** (`-takeover`)
+- **Certificate Transparency Log Mining** (`-ct`)
+- **Wayback Machine URL Mining** (`-wayback`)
+- **CORS Misconfiguration Scanner** (`-cors`)
+- **Sensitive File & Path Detection** (`-sensitive`)
+- **Security Header Analysis** (`-header-audit`)
+- **Open Redirect Detection** (`-redirect`)
+- **API Endpoint Discovery** (`-api`)
 - Directory & File Fuzzing (Async Requests)
 - Parameter Discovery
 - Web Crawler with:
@@ -64,7 +74,17 @@ Options:
   -emails                  Harvest emails from target URLs
   -all                     Run ALL recon modules automatically in sequence
 
+  -takeover                Check subdomains for takeover vulnerabilities
+  -ct                      Mine Certificate Transparency logs for subdomains (crt.sh)
+  -wayback                 Mine Wayback Machine for historical URLs
+  -cors                    Scan for CORS misconfigurations
+  -sensitive               Check for exposed sensitive files and paths
+  -header-audit            Audit HTTP security headers and provide a grade (A-F)
+  -redirect                Test for open redirect vulnerabilities
+  -api                     Discover API endpoints, GraphQL, and OpenAPI specs
+
   -w WORDLIST              Wordlist to use (optional — built-in defaults used when omitted)
+  --wordlist-size SIZE     SecLists wordlist size: small (default), medium, or large
   -T THREADS               Number of threads [default: 20]
   -o OUTPUT                Output file to save primary results
   --depth DEPTH            Crawling depth [default: 2]
@@ -81,7 +101,7 @@ Options:
 
 ### Full Automated Recon Pipeline (`-all`)
 
-The `-all` flag runs **every recon module sequentially** in five phases, feeding
+The `-all` flag runs **every recon module sequentially** in seven phases, feeding
 results from earlier phases into later ones. A single consolidated report is
 generated when `-o` is specified.
 
@@ -89,11 +109,13 @@ vorteX ships with built-in wordlists, so **`-w` is completely optional**. When
 `-w` is omitted, each phase automatically uses the appropriate built-in default:
 
 ```
-Phase 1: Reconnaissance & Discovery  → DNS, SSL/TLS, Port Scan
-Phase 2: Subdomain & Surface Expansion → Subdomain Enumeration (built-in subdomains.txt)
-Phase 3: Active Scanning             → Directory Fuzzing (built-in directories.txt), Tech Fingerprinting
-Phase 4: Deep Analysis               → Crawling, JS Discovery, Email Harvesting
-Phase 5: Parameter Analysis          → Parameter Fuzzing (built-in parameters.txt)
+Phase 1: Reconnaissance & Discovery   → DNS, SSL/TLS, Port Scan
+Phase 2: Subdomain & Surface Expansion → Subdomain Enumeration
+Phase 3: Active Scanning              → Directory Fuzzing, Tech Fingerprinting
+Phase 4: Deep Analysis                → Crawling, JS Discovery, Email Harvesting
+Phase 5: Parameter Analysis           → Parameter Fuzzing
+Phase 6: Passive Recon                → CT Log Mining, Wayback Machine
+Phase 7: Vulnerability Scanning       → Takeover, CORS, Sensitive Files, Headers, Redirects, API
 ```
 
 ```bash
@@ -167,6 +189,104 @@ When SecLists is **not** found, vorteX falls back to its bundled wordlists and p
 ```
 
 > **User-supplied `-w` always wins** — an explicit wordlist path always overrides both SecLists and bundled defaults.
+
+---
+
+### Subdomain Takeover Detection (`-takeover`)
+
+Checks discovered subdomains for dangling CNAME records pointing to deprovisioned cloud services.
+
+**Fingerprinted services:** GitHub Pages, Heroku, AWS S3, Shopify, Tumblr, Azure, Fastly, Pantheon, Cargo, Zendesk, Surge, Bitbucket, Netlify, ReadMe, Ghost, WP Engine, and more.
+
+```bash
+# Enumerate subdomains then check for takeover
+vorteX -d example.com -takeover -o takeover.json --format json
+
+# Check a specific list of subdomains
+cat subdomains.txt | vorteX -takeover -o takeover.txt
+```
+
+---
+
+### Certificate Transparency Log Mining (`-ct`)
+
+Passively discovers subdomains by querying the [crt.sh](https://crt.sh) public CT log API — no DNS bruteforce needed.
+
+```bash
+vorteX -d example.com -ct -o ct-subdomains.txt
+```
+
+---
+
+### Wayback Machine URL Mining (`-wayback`)
+
+Discovers historical URLs from the Internet Archive's CDX API. Automatically filters for interesting file extensions (`.js`, `.php`, `.env`, `.bak`, `.sql`, etc.).
+
+```bash
+vorteX -d example.com -wayback -o wayback-urls.txt
+```
+
+---
+
+### CORS Misconfiguration Scanner (`-cors`)
+
+Tests endpoints for CORS misconfigurations by injecting malicious `Origin` headers.
+
+**Severity levels:**
+- 🔴 **CRITICAL** — Origin reflected with `Access-Control-Allow-Credentials: true`
+- 🟡 **HIGH** — Origin reflected without credentials
+- 🟣 **MEDIUM** — `null` origin accepted
+
+```bash
+cat urls.txt | vorteX -cors -o cors-findings.json --format json
+vorteX -cors -url https://api.example.com -o cors.txt
+```
+
+---
+
+### Sensitive File & Path Detection (`-sensitive`)
+
+Probes for commonly exposed sensitive files and paths (`.env`, `.git/config`, `phpinfo.php`, Spring Boot actuators, backup files, etc.).
+
+```bash
+vorteX -sensitive -url https://example.com -o sensitive.txt
+cat targets.txt | vorteX -sensitive -o sensitive.json --format json
+```
+
+---
+
+### Security Header Analysis (`-header-audit`)
+
+Audits HTTP security headers and assigns a letter grade (A–F) based on how many recommended headers are present.
+
+**Checked headers:** `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, `Cross-Origin-Embedder-Policy`
+
+```bash
+vorteX -header-audit -url https://example.com
+cat urls.txt | vorteX -header-audit -o headers.json --format json
+```
+
+---
+
+### Open Redirect Detection (`-redirect`)
+
+Tests URL parameters for open redirect vulnerabilities using common parameter names and payloads.
+
+```bash
+cat urls.txt | vorteX -redirect -o redirects.txt
+vorteX -redirect -url "https://example.com/login" -o redirects.json --format json
+```
+
+---
+
+### API Endpoint Discovery (`-api`)
+
+Discovers API endpoints, GraphQL interfaces, OpenAPI/Swagger specs, and extracts API paths from JavaScript files.
+
+```bash
+vorteX -api -url https://example.com -o api-endpoints.json --format json
+cat targets.txt | vorteX -api -o api.txt
+```
 
 ---
 
@@ -281,6 +401,4 @@ vorteX -url https://example.com -tech
 ## Disclaimer
 
 >**This tool is intended for security testing and educational purposes only. Do not use this tool against targets without proper authorization.**
-
-
 
