@@ -420,6 +420,47 @@ cat targets.txt | vorteX -api -o api.txt
 
 ---
 
+### SecLists Integration
+
+vorteX automatically detects and uses [SecLists](https://github.com/danielmiessler/SecLists) when installed, falling back to the bundled default wordlists otherwise.
+
+**Auto-detected paths (in order of priority):**
+
+| Path | Notes |
+|------|-------|
+| `$SECLISTS_PATH` env var | Highest priority — set this to any custom SecLists location |
+| `/usr/share/seclists/` | Default on Kali Linux / Parrot OS |
+| `/usr/share/SecLists/` | Alternative capitalization |
+| `/opt/seclists/` | Manual installs |
+| `~/SecLists/` | Git clone in home directory |
+
+**Install SecLists:**
+
+```bash
+# Kali / Parrot (recommended)
+sudo apt install seclists
+
+# Any Linux / macOS — Git clone
+git clone https://github.com/danielmiessler/SecLists.git ~/SecLists
+```
+
+**Wordlist size tiers** (use `--wordlist-size`):
+
+| Tier | Subdomains | Directories | Parameters |
+|------|-----------|-------------|------------|
+| `small` (default) | `subdomains-top1million-5000.txt` | `common.txt` | `burp-parameter-names.txt` |
+| `medium` | `subdomains-top1million-20000.txt` | `raft-medium-directories.txt` | `burp-parameter-names.txt` |
+| `large` | `subdomains-top1million-110000.txt` | `directory-list-2.3-medium.txt` | `burp-parameter-names.txt` |
+
+```bash
+# Use medium SecLists wordlists
+vorteX -d example.com --wordlist-size medium
+
+# Use large SecLists wordlists for full recon
+vorteX -all -d example.com --wordlist-size large
+
+# Override with a custom wordlist (always takes priority over SecLists)
+vorteX -d example.com -w /path/to/custom-subdomains.txt
 ### XSS Scanner (`-xss`)
 
 Tests URL parameters with reflected XSS payloads (~90 payloads bundled). Detects the reflection context (HTML body, attribute, or inside a `<script>` tag).
