@@ -91,6 +91,20 @@ def main():
     parser.add_argument("-api", "--api-discovery", action="store_true",
                         help="Discover API endpoints, GraphQL, and OpenAPI specs")
 
+    # New vulnerability scanning modes
+    parser.add_argument("-xss", "--xss-scan", action="store_true",
+                        help="Scan for reflected XSS vulnerabilities")
+    parser.add_argument("-sqli", "--sqli-scan", action="store_true",
+                        help="Scan for SQL injection vulnerabilities")
+    parser.add_argument("-ssrf", "--ssrf-scan", action="store_true",
+                        help="Scan for SSRF vulnerabilities")
+    parser.add_argument("-lfi", "--lfi-scan", action="store_true",
+                        help="Scan for Local File Inclusion vulnerabilities")
+    parser.add_argument("-bypass403", "--bypass-403", action="store_true",
+                        help="Attempt 403 Forbidden bypass techniques")
+    parser.add_argument("-waf", "--waf-detect", action="store_true",
+                        help="Detect Web Application Firewalls")
+
     # Options
     parser.add_argument("-w", "--wordlist", help="Wordlist for enumeration, fuzzing, or paramfuzz")
     parser.add_argument("--wordlist-size", choices=["small", "medium", "large"], default="small",
@@ -102,6 +116,7 @@ def main():
     parser.add_argument("--headers", nargs='*', default=[], help='Custom headers (e.g., "User-Agent: UA")')
     parser.add_argument("--format", choices=["json", "txt"], default="txt", help="Output format (global)")
     parser.add_argument("--proxy", help="HTTP/SOCKS proxy URL (e.g., http://127.0.0.1:8080)")
+    parser.add_argument("--proxy-file", help="File with proxy URLs for rotation (one per line)")
     parser.add_argument("--rate-limit", type=float, help="Max requests per second")
     parser.add_argument("--random-ua", action="store_true", help="Rotate User-Agent strings randomly")
     parser.add_argument("--timeout", type=float, default=10, help="Request timeout in seconds")
@@ -133,8 +148,18 @@ def main():
             headers_dict[k.strip()] = v.strip()
 
     # Common kwargs for modules
+    proxy = args.proxy
+    if not proxy and args.proxy_file:
+        from vortex.proxy_manager import ProxyManager
+        try:
+            pm = ProxyManager(args.proxy_file)
+            proxy = pm.next()
+            print(f"{Fore.CYAN}[*] Proxy rotation enabled — {len(pm)} proxies loaded.{Style.RESET_ALL}")
+        except (ValueError, OSError) as exc:
+            print(f"{Fore.YELLOW}[!] Could not load proxy file: {exc}{Style.RESET_ALL}")
+
     common_kwargs = dict(
-        proxy=args.proxy,
+        proxy=proxy,
         timeout=args.timeout,
         random_ua=args.random_ua,
         rate_limit=args.rate_limit,
@@ -367,6 +392,66 @@ def main():
             print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
             sys.exit(1)
         asyncio.run(discover_api_endpoints(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, **common_kwargs
+        ))
+
+    elif args.xss_scan:
+        from vortex.xss_scanner import scan_xss
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(scan_xss(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, fast=args.fast, **common_kwargs
+        ))
+
+    elif args.sqli_scan:
+        from vortex.sqli_scanner import scan_sqli
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(scan_sqli(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, fast=args.fast, **common_kwargs
+        ))
+
+    elif args.ssrf_scan:
+        from vortex.ssrf_scanner import scan_ssrf
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(scan_ssrf(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, fast=args.fast, **common_kwargs
+        ))
+
+    elif args.lfi_scan:
+        from vortex.lfi_scanner import scan_lfi
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(scan_lfi(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, fast=args.fast, **common_kwargs
+        ))
+
+    elif args.bypass_403:
+        from vortex.bypass403 import bypass_403
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(bypass_403(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, **common_kwargs
+        ))
+
+    elif args.waf_detect:
+        from vortex.waf_detector import detect_waf
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(detect_waf(
             targets, output_file=args.output, output_format=args.format,
             max_threads=args.threads, **common_kwargs
         ))

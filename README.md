@@ -20,6 +20,13 @@
 - **Security Header Analysis** (`-header-audit`)
 - **Open Redirect Detection** (`-redirect`)
 - **API Endpoint Discovery** (`-api`)
+- **XSS Scanner** (`-xss`) — reflected XSS with context-aware detection
+- **SQL Injection Scanner** (`-sqli`) — error-based & time-based blind detection
+- **SSRF Scanner** (`-ssrf`) — internal IP & cloud metadata URL testing
+- **LFI Scanner** (`-lfi`) — path traversal & file content detection
+- **403 Bypass Tester** (`-bypass403`) — header, path, and method bypass techniques
+- **WAF Detector** (`-waf`) — fingerprints 15+ WAF products
+- **Proxy Rotation** (`--proxy-file`) — round-robin proxy rotation from file
 - Directory & File Fuzzing (Async Requests)
 - Parameter Discovery
 - Web Crawler with:
@@ -37,17 +44,61 @@
 
 ## Installation
 
+### Recommended: `pipx` (isolated, no system Python conflicts)
+
 ```bash
 git clone https://github.com/SriRameshNaiduKusu/vorteX.git
 cd vorteX
+pipx install .
+```
+
+`pipx` installs vorteX in its own isolated environment and adds the `vorteX`
+command to your PATH automatically. This is the preferred method on **Kali Linux**,
+**Parrot OS**, **Ubuntu 23+**, and any system using PEP 668 (`externally-managed-environment`).
+
+### `make install` shortcut
+
+```bash
+git clone https://github.com/SriRameshNaiduKusu/vorteX.git
+cd vorteX
+make install        # tries pipx first, falls back to .venv/
+```
+
+| Target | Description |
+|--------|-------------|
+| `make install` | Install via pipx (falls back to `.venv/`) |
+| `make dev` | Dev install (editable mode in `.venv/`) |
+| `make uninstall` | Remove pipx install and/or `.venv/` |
+| `make clean` | Remove build artifacts and `__pycache__` |
+
+### `install.sh` (cross-platform script)
+
+```bash
+git clone https://github.com/SriRameshNaiduKusu/vorteX.git
+cd vorteX
+bash install.sh         # standard install
+bash install.sh --dev   # dev/editable install
+```
+
+### Virtual environment (manual)
+
+```bash
+git clone https://github.com/SriRameshNaiduKusu/vorteX.git
+cd vorteX
+python3 -m venv .venv
+source .venv/bin/activate
 pip install .
+```
 
-```
->if you get "error: externally-managed-environment", Use this to install
+### Developer install
 
+```bash
+pip install -e ".[dev]"   # inside a venv or pipx
 ```
-pip install . --break-system-packages
-```
+
+> ⚠️ **Do not use `--break-system-packages`** — this flag bypasses your OS
+> package manager's dependency isolation and can corrupt system Python packages.
+> Use `pipx`, a venv, or `make install` instead.
 ---
 
 ## Usage
@@ -83,6 +134,13 @@ Options:
   -redirect                Test for open redirect vulnerabilities
   -api                     Discover API endpoints, GraphQL, and OpenAPI specs
 
+  -xss                     Scan for reflected XSS vulnerabilities
+  -sqli                    Scan for SQL injection vulnerabilities (error-based)
+  -ssrf                    Scan for SSRF vulnerabilities
+  -lfi                     Scan for Local File Inclusion / path traversal
+  -bypass403               Attempt 403 Forbidden bypass techniques
+  -waf                     Detect Web Application Firewalls
+
   -w WORDLIST              Wordlist to use (optional — built-in defaults used when omitted)
   --wordlist-size SIZE     SecLists wordlist size: small (default), medium, or large
   -T THREADS               Number of threads [default: 20]
@@ -92,12 +150,13 @@ Options:
   --headers HEADERS        Custom headers for requests (e.g., "User-Agent:Custom")
   --format FORMAT          Output format (json/txt) [default: txt]
   --proxy PROXY            HTTP/SOCKS proxy URL
+  --proxy-file FILE        File with proxy URLs for rotation (one per line)
   --rate-limit RATE        Max requests per second
   --random-ua              Rotate User-Agent strings randomly
   --timeout TIMEOUT        Request timeout in seconds [default: 10]
   --fast                   Enable fast mode — reduced payloads and checks for quicker scans
   --skip MODULES           Comma-separated list of modules to skip during -all mode
-                           (e.g., redirect,wayback,cors)
+                           (e.g., redirect,wayback,cors,xss,sqli)
 ```
 
 ---
@@ -119,6 +178,7 @@ Phase 4: Deep Analysis                → Crawling, JS Discovery, Email Harvesti
 Phase 5: Parameter Analysis           → Parameter Fuzzing
 Phase 6: Passive Recon                → CT Log Mining, Wayback Machine
 Phase 7: Vulnerability Scanning       → Takeover, CORS, Sensitive Files, Headers, Redirects, API
+Phase 8: Advanced Vulnerability Scan  → WAF Detection, XSS, SQLi, SSRF, LFI
 ```
 
 ```bash
@@ -179,6 +239,11 @@ Provides a comma-separated list of module names to skip entirely during `-all` m
 | `wayback`    | Wayback Machine URL mining        |
 | `ct`         | Certificate Transparency log mining |
 | `api`        | API endpoint discovery            |
+| `waf`        | WAF detection                     |
+| `xss`        | XSS scanning                      |
+| `sqli`       | SQL injection scanning            |
+| `ssrf`       | SSRF scanning                     |
+| `lfi`        | LFI / path traversal scanning     |
 
 ```bash
 # Skip open redirect and Wayback (slowest modules on large targets)
@@ -351,6 +416,87 @@ Discovers API endpoints, GraphQL interfaces, OpenAPI/Swagger specs, and extracts
 ```bash
 vorteX -api -url https://example.com -o api-endpoints.json --format json
 cat targets.txt | vorteX -api -o api.txt
+```
+
+---
+
+### XSS Scanner (`-xss`)
+
+Tests URL parameters with reflected XSS payloads (~90 payloads bundled). Detects the reflection context (HTML body, attribute, or inside a `<script>` tag).
+
+```bash
+vorteX -xss -url "https://example.com/search?q=test" -o xss.json --format json
+cat urls.txt | vorteX -xss --fast -o xss.txt
+```
+
+---
+
+### SQL Injection Scanner (`-sqli`)
+
+Error-based SQLi detection across MySQL, PostgreSQL, MSSQL, Oracle, and SQLite (~80 payloads). Optionally enables time-based blind SQLi with `--deep`.
+
+```bash
+vorteX -sqli -url "https://example.com/item?id=1" -o sqli.json --format json
+cat urls.txt | vorteX -sqli --fast
+```
+
+---
+
+### SSRF Scanner (`-ssrf`)
+
+Tests URL parameters with SSRF payloads including internal IPs, cloud metadata URLs (AWS, GCP, Azure), and protocol smuggling (`file://`, `gopher://`, `dict://`).
+
+```bash
+vorteX -ssrf -url "https://example.com/fetch?url=test" -o ssrf.json --format json
+cat urls.txt | vorteX -ssrf --fast
+```
+
+---
+
+### LFI Scanner (`-lfi`)
+
+Tests URL parameters with path traversal payloads and detects file content signatures (`/etc/passwd`, Windows `win.ini`, etc.) in responses.
+
+```bash
+vorteX -lfi -url "https://example.com/page?file=about.txt" -o lfi.txt
+cat urls.txt | vorteX -lfi --fast -o lfi.json --format json
+```
+
+---
+
+### 403 Bypass Tester (`-bypass403`)
+
+Tests multiple bypass techniques against URLs that return 403 Forbidden:
+- **Header tricks**: `X-Forwarded-For`, `X-Original-URL`, `X-Rewrite-URL`, `Referer`, etc.
+- **Path manipulation**: `/%2e/`, `/.json`, `//`, `..;/`, double encoding, etc.
+- **Method switching**: GET → POST, HEAD, OPTIONS, PUT, PATCH, TRACE
+
+```bash
+vorteX -bypass403 -url "https://example.com/admin" -o bypass.txt
+cat 403-urls.txt | vorteX -bypass403 -o bypass.json --format json
+```
+
+---
+
+### WAF Detector (`-waf`)
+
+Fingerprints Web Application Firewalls via response headers, cookies, and body patterns. Covers 15+ products including Cloudflare, AWS WAF, Akamai, Sucuri, ModSecurity, Imperva, F5 BIG-IP, Barracuda, and more.
+
+```bash
+vorteX -waf -url https://example.com
+cat targets.txt | vorteX -waf -o waf-results.json --format json
+```
+
+---
+
+### Proxy Rotation (`--proxy-file`)
+
+Load multiple proxies from a file and rotate them round-robin across all requests. Combine with any scan mode.
+
+```bash
+# proxies.txt: one proxy URL per line
+vorteX -xss -url "https://example.com/search?q=1" --proxy-file proxies.txt
+vorteX -all -d example.com --proxy-file proxies.txt --random-ua
 ```
 
 ---
