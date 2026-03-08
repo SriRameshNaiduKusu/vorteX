@@ -21,11 +21,21 @@ async def fetch_and_extract_js_links(js_url, session, proxy=None, timeout=10):
         async with session.get(js_url, timeout=aiohttp.ClientTimeout(total=timeout),
                                ssl=False, **req_kwargs) as resp:
             if resp.status == 200:
-                text = await resp.text()
+                content_type = resp.headers.get('Content-Type', '')
+                if not content_type.startswith(('text/', 'application/json', 'application/javascript', 'application/xml', 'application/xhtml')):
+                    return js_links
+                raw = await resp.read()
+                encoding = resp.charset or 'utf-8'
+                try:
+                    text = raw.decode(encoding)
+                except (UnicodeDecodeError, LookupError):
+                    text = raw.decode('utf-8', errors='replace')
                 found = re.findall(r'["\']((?:https?:)?//[^"\']+|/[^"\']{1,200})["\']', text)
                 js_links.update(found)
     except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
         logging.debug(f"Error fetching JS {js_url}: {e}")
+    except Exception as e:
+        logging.warning(f"Failed to process JS {js_url}: {e}")
     return js_links
 
 
@@ -67,7 +77,15 @@ async def discover_js_links(target_urls, depth, output_file=None, output_format=
                     try:
                         async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout),
                                                ssl=False, headers=headers or None, **req_kwargs) as resp:
-                            html = await resp.text()
+                            content_type = resp.headers.get('Content-Type', '')
+                            if not content_type.startswith(('text/', 'application/json', 'application/javascript', 'application/xml', 'application/xhtml')):
+                                continue
+                            raw = await resp.read()
+                            encoding = resp.charset or 'utf-8'
+                            try:
+                                html = raw.decode(encoding)
+                            except (UnicodeDecodeError, LookupError):
+                                html = raw.decode('utf-8', errors='replace')
                             soup = BeautifulSoup(html, "html.parser")
 
                             for tag in soup.find_all("script", src=True):
@@ -82,6 +100,9 @@ async def discover_js_links(target_urls, depth, output_file=None, output_format=
                                     queue.add(full_url)
                     except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
                         logging.debug(f"Error in JS discovery for {url}: {e}")
+                        continue
+                    except Exception as e:
+                        logging.warning(f"Failed to process {url}: {e}")
                         continue
 
                     if rate_limit:
