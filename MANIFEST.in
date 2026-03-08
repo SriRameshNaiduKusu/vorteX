@@ -1,1 +1,2 @@
 include vortex/wordlists/*.txt
+include vortex/payloads/*.txt

@@ -34,7 +34,7 @@ where = ["."]
 include = ["vortex*"]
 
 [tool.setuptools.package-data]
-vortex = ["wordlists/*.txt"]
+vortex = ["wordlists/*.txt", "payloads/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
