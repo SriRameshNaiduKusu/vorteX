@@ -173,6 +173,7 @@ vorteX ships with built-in wordlists, so **`-w` is completely optional**. When
 ```
 Phase 1: Reconnaissance & Discovery   → DNS, SSL/TLS, Port Scan
 Phase 2: Subdomain & Surface Expansion → Subdomain Enumeration
+Phase 2.5: HTTP Probing               → Filter dead hosts, wildcard detection
 Phase 3: Active Scanning              → Directory Fuzzing, Tech Fingerprinting
 Phase 4: Deep Analysis                → Crawling, JS Discovery, Email Harvesting
 Phase 5: Parameter Analysis           → Parameter Fuzzing
@@ -235,6 +236,7 @@ Provides a comma-separated list of module names to skip entirely during `-all` m
 | `ssl`        | SSL/TLS check                     |
 | `ports`      | Port scanning                     |
 | `subdomains` | Subdomain enumeration             |
+| `probe`      | HTTP liveness probing (pass all subdomains through) |
 | `fuzzing`    | Directory fuzzing                 |
 | `tech`       | Technology fingerprinting         |
 | `crawl`      | Web crawling                      |

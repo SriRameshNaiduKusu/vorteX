@@ -122,7 +122,9 @@ def main():
     parser.add_argument("--skip", default="",
                         help="Comma-separated list of modules to skip during -all mode "
                              "(e.g., dns,ssl,ports,subdomains,fuzzing,tech,crawl,js,emails,params,"
-                             "ct,wayback,redirect,cors,takeover,waf,xss,sqli,ssrf,lfi)")
+                             "ct,wayback,redirect,cors,takeover,waf,xss,sqli,ssrf,lfi,probe)")
+    parser.add_argument("--max-probe-targets", type=int, default=5000,
+                        help="Max live targets to forward after HTTP probing in -all mode [default: 5000]")
 
     args = parser.parse_args()
 
@@ -184,6 +186,7 @@ def main():
             verbose=args.verbose,
             fast=args.fast,
             skip=args.skip,
+            max_probe_targets=args.max_probe_targets,
         ))
 
     elif args.domain and not any([args.dns_enum, args.ssl_check, args.port_scan]):
