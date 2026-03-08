@@ -60,6 +60,7 @@ async def run_full_recon(
     wordlist_size='small',
     fast=False,
     skip='',
+    max_probe_targets=5000,
 ):
     """Run all recon modules sequentially, feeding results forward."""
     scan_start = time.monotonic()
@@ -195,6 +196,40 @@ async def run_full_recon(
                 failed_modules.append("subdomains")
     else:
         print(f"{Fore.YELLOW}[ℹ] No domain provided — skipping subdomain enumeration.{Style.RESET_ALL}")
+
+    # ── Phase 2.5: HTTP Probing (Liveness Check) ──────────────────────────────
+    _print_phase_banner("Phase 2.5: HTTP Probing (Liveness Check)")
+
+    if found_subdomains:
+        if "probe" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping HTTP probing (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.http_probe import probe_alive
+
+                live_targets = await probe_alive(
+                    found_subdomains,
+                    max_threads=threads,
+                    timeout=min(timeout, 5.0),
+                    proxy=proxy,
+                    random_ua=random_ua,
+                    max_targets=max_probe_targets,
+                )
+                # Replace discovered URLs with only live targets + original targets
+                all_discovered_urls = set(targets) | set(live_targets)
+                all_results["probe"] = {
+                    "total_probed": len(found_subdomains),
+                    "alive": len(live_targets),
+                    "filtered": len(found_subdomains) - len(live_targets),
+                }
+                _print_phase_summary("Live hosts", len(live_targets), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"HTTP probing failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] HTTP probing failed: {exc}. Using all subdomains...{Style.RESET_ALL}")
+                failed_modules.append("probe")
+    else:
+        print(f"{Fore.YELLOW}[ℹ] No subdomains found — skipping HTTP probing.{Style.RESET_ALL}")
 
     # ── Phase 3: Active Scanning ──────────────────────────────────────────────
     _print_phase_banner("Phase 3: Active Scanning")
@@ -375,7 +410,24 @@ async def run_full_recon(
                     **common_kwargs,
                 )
                 all_results["ct_subdomains"] = ct_subdomains
-                all_discovered_urls.update(f"https://{s}" for s in ct_subdomains)
+                if ct_subdomains and "probe" not in skip_modules:
+                    try:
+                        from vortex.http_probe import probe_alive
+
+                        ct_live = await probe_alive(
+                            ct_subdomains,
+                            max_threads=threads,
+                            timeout=min(timeout, 5.0),
+                            proxy=proxy,
+                            random_ua=random_ua,
+                            max_targets=max_probe_targets,
+                        )
+                        all_discovered_urls.update(ct_live)
+                    except Exception as exc:
+                        logging.warning(f"CT log HTTP probing failed: {exc}")
+                        all_discovered_urls.update(f"https://{s}" for s in ct_subdomains)
+                else:
+                    all_discovered_urls.update(f"https://{s}" for s in ct_subdomains)
                 _print_phase_summary("CT log subdomains", len(ct_subdomains), time.monotonic() - t0)
             except Exception as exc:
                 logging.warning(f"CT log mining failed: {exc}")
@@ -686,6 +738,8 @@ async def run_full_recon(
 
     summary = {
         "total_subdomains": len(all_results.get("subdomains", [])),
+        "probed_alive": all_results.get("probe", {}).get("alive", 0),
+        "probed_filtered": all_results.get("probe", {}).get("filtered", 0),
         "total_directories": len(all_results.get("fuzzing", [])),
         "total_emails": len(all_results.get("emails", [])),
         "total_technologies": tech_count,
@@ -707,6 +761,7 @@ async def run_full_recon(
     }
 
     print(f"{Fore.CYAN}  Subdomains found   : {summary['total_subdomains']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  Live hosts (probed): {summary['probed_alive']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  CT log subdomains  : {summary['ct_subdomains']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  Wayback URLs       : {summary['wayback_urls']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  Directories found  : {summary['total_directories']}{Style.RESET_ALL}")
@@ -739,6 +794,7 @@ async def run_full_recon(
                 "ssl": all_results.get("ssl", {}),
                 "ports": all_results.get("ports", {}),
                 "subdomains": all_results.get("subdomains", []),
+                "probe": all_results.get("probe", {}),
                 "ct_subdomains": all_results.get("ct_subdomains", []),
                 "wayback_urls": all_results.get("wayback_urls", []),
                 "fuzzing": all_results.get("fuzzing", []),
