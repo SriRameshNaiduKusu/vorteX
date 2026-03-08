@@ -12,7 +12,6 @@ import asyncio
 import json
 import logging
 import random
-from urllib.parse import urlparse
 
 import aiohttp
 from colorama import Fore, Style
@@ -125,7 +124,6 @@ async def _test_path_bypass(
 
     headers = {"User-Agent": random.choice(USER_AGENTS) if random_ua else "Mozilla/5.0"}
 
-    parsed = urlparse(url)
     test_url = url.rstrip("/") + path_suffix
 
     try:
@@ -148,8 +146,6 @@ async def _test_path_bypass(
     except Exception as exc:
         logging.debug(f"403 path bypass error for {test_url}: {exc}")
 
-    # Ensure parsed is used to avoid unused variable warning
-    _ = parsed
     return None
 
 
