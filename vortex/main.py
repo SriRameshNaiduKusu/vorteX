@@ -4,17 +4,11 @@ import argparse
 from colorama import Fore, Style, init
 from urllib.parse import urlparse
 
-from vortex.utils import display_banner, setup_logging, VERSION
+from vortex.utils import display_banner, setup_logging, VERSION, _count_lines
 from vortex.wordlists import (
     get_wordlist_for_size,
     _SECLISTS_FILES,
 )
-
-
-def _count_lines(path):
-    """Return the number of non-empty lines in a file."""
-    with open(path) as fh:
-        return sum(1 for line in fh if line.strip())
 
 
 def _resolve_wordlist(module, size, explicit_wordlist):
@@ -127,7 +121,8 @@ def main():
                         help="Enable fast mode — reduced payloads and checks for quicker scans")
     parser.add_argument("--skip", default="",
                         help="Comma-separated list of modules to skip during -all mode "
-                             "(e.g., redirect,wayback,cors)")
+                             "(e.g., dns,ssl,ports,subdomains,fuzzing,tech,crawl,js,emails,params,"
+                             "ct,wayback,redirect,cors,takeover,waf,xss,sqli,ssrf,lfi)")
 
     args = parser.parse_args()
 
