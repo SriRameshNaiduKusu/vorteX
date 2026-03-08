@@ -19,6 +19,22 @@ def test_redirect_payloads_not_empty():
     assert any("evil.com" in p for p in REDIRECT_PAYLOADS)
 
 
+def test_fast_params_subset_of_full_params():
+    """REDIRECT_PARAMS_FAST should be a subset of REDIRECT_PARAMS and smaller."""
+    from vortex.open_redirect import REDIRECT_PARAMS, REDIRECT_PARAMS_FAST
+    assert len(REDIRECT_PARAMS_FAST) < len(REDIRECT_PARAMS)
+    for p in REDIRECT_PARAMS_FAST:
+        assert p in REDIRECT_PARAMS
+
+
+def test_fast_payloads_subset_of_full_payloads():
+    """REDIRECT_PAYLOADS_FAST should be a subset of REDIRECT_PAYLOADS and smaller."""
+    from vortex.open_redirect import REDIRECT_PAYLOADS, REDIRECT_PAYLOADS_FAST
+    assert len(REDIRECT_PAYLOADS_FAST) < len(REDIRECT_PAYLOADS)
+    for p in REDIRECT_PAYLOADS_FAST:
+        assert p in REDIRECT_PAYLOADS
+
+
 def test_location_points_to_evil():
     """_location_points_to_evil correctly identifies evil.com redirects."""
     from vortex.open_redirect import _location_points_to_evil
@@ -126,5 +142,81 @@ def test_check_open_redirect_output_file(tmp_path):
 
         assert out.exists()
         assert "evil.com" in out.read_text()
+
+    asyncio.run(run())
+
+
+def test_check_open_redirect_fast_mode_uses_reduced_payloads():
+    """In fast mode, check_open_redirect uses the reduced payload set by default."""
+    async def run():
+        from vortex.open_redirect import check_open_redirect, REDIRECT_PAYLOADS_FAST
+
+        calls = []
+
+        resp = AsyncMock()
+        resp.status = 200
+        resp.headers = {}
+        resp.__aenter__ = AsyncMock(return_value=resp)
+        resp.__aexit__ = AsyncMock(return_value=False)
+
+        original_resp = resp
+
+        def track_get(url, **kwargs):
+            calls.append(url)
+            return original_resp
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(side_effect=track_get)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            with patch("aiohttp.TCPConnector", return_value=MagicMock()):
+                await check_open_redirect(
+                    ["https://example.com/page"],
+                    fast=True,
+                )
+
+        # Fast mode should make fewer calls than full mode
+        # (REDIRECT_PARAMS_FAST × REDIRECT_PAYLOADS_FAST)
+        from vortex.open_redirect import REDIRECT_PARAMS_FAST
+        assert len(calls) <= len(REDIRECT_PARAMS_FAST) * len(REDIRECT_PAYLOADS_FAST)
+
+    asyncio.run(run())
+
+
+def test_check_open_redirect_fast_mode_uses_full_params_for_urls_with_query():
+    """In fast mode, URLs that already have query params get the full param list."""
+    async def run():
+        from vortex.open_redirect import check_open_redirect, REDIRECT_PARAMS, REDIRECT_PAYLOADS_FAST
+
+        calls = []
+
+        resp = AsyncMock()
+        resp.status = 200
+        resp.headers = {}
+        resp.__aenter__ = AsyncMock(return_value=resp)
+        resp.__aexit__ = AsyncMock(return_value=False)
+
+        original_resp = resp
+
+        def track_get(url, **kwargs):
+            calls.append(url)
+            return original_resp
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(side_effect=track_get)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            with patch("aiohttp.TCPConnector", return_value=MagicMock()):
+                await check_open_redirect(
+                    ["https://example.com/page?foo=bar"],  # URL with query param
+                    fast=True,
+                )
+
+        # URL with query params → full REDIRECT_PARAMS × fast payloads
+        assert len(calls) == len(REDIRECT_PARAMS) * len(REDIRECT_PAYLOADS_FAST)
 
     asyncio.run(run())

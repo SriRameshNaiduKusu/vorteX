@@ -10,6 +10,7 @@ import random
 
 import aiohttp
 from colorama import Fore, Style
+from tqdm import tqdm
 
 from vortex.utils import stop_event, display_banner
 from vortex.user_agents import USER_AGENTS
@@ -64,6 +65,25 @@ SENSITIVE_PATHS = [
     "/id_dsa",
 ]
 
+# Reduced set of the most critical paths for fast mode (~15 entries)
+SENSITIVE_PATHS_FAST = [
+    "/.env",
+    "/.git/config",
+    "/.git/HEAD",
+    "/.htaccess",
+    "/.htpasswd",
+    "/wp-config.php.bak",
+    "/phpinfo.php",
+    "/swagger.json",
+    "/openapi.json",
+    "/.aws/credentials",
+    "/backup.zip",
+    "/database.sql",
+    "/actuator/env",
+    "/id_rsa",
+    "/config.json",
+]
+
 # Minimum content-length to consider a 200 response "real" (not a soft 404)
 _MIN_CONTENT_LENGTH = 10
 
@@ -113,6 +133,7 @@ async def scan_sensitive_files(
     random_ua=False,
     rate_limit=None,
     max_threads=20,
+    fast=False,
 ):
     """Check each base URL for sensitive files.
 
@@ -126,6 +147,8 @@ async def scan_sensitive_files(
         Path to write results.
     output_format : str
         ``'json'`` or ``'txt'``.
+    fast : bool
+        If True, use the reduced :data:`SENSITIVE_PATHS_FAST` list.
 
     Returns
     -------
@@ -134,25 +157,30 @@ async def scan_sensitive_files(
         ``content_type``.
     """
     display_banner()
-    probe_paths = paths if paths is not None else SENSITIVE_PATHS
+    if paths is not None:
+        probe_paths = paths
+    elif fast:
+        probe_paths = SENSITIVE_PATHS_FAST
+    else:
+        probe_paths = SENSITIVE_PATHS
     print(
         f"{Fore.CYAN}[*] Scanning {len(urls)} target(s) for sensitive files "
-        f"({len(probe_paths)} paths each)...{Style.RESET_ALL}"
+        f"({len(probe_paths)} paths each{', fast mode' if fast else ''})...{Style.RESET_ALL}"
     )
 
     findings = []
     sem = asyncio.Semaphore(max_threads)
 
-    async def check_base(base_url):
+    async def check_base(base_url, pbar):
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
             for path in probe_paths:
                 if stop_event.is_set():
-                    return
+                    break
                 async with sem:
                     result = await _check_path(session, base_url, path, proxy, timeout, random_ua)
                     if result:
                         findings.append(result)
-                        print(
+                        tqdm.write(
                             f"{Fore.RED}[!] Sensitive file found: "
                             f"{result['url']} "
                             f"(HTTP {result['status']}, "
@@ -161,8 +189,10 @@ async def scan_sensitive_files(
                         )
                     if rate_limit:
                         await asyncio.sleep(1.0 / rate_limit)
+        pbar.update(1)
 
-    await asyncio.gather(*[check_base(u) for u in urls])
+    with tqdm(total=len(urls), desc="Sensitive Files", ncols=80) as pbar:
+        await asyncio.gather(*[check_base(u, pbar) for u in urls])
 
     if not findings:
         print(f"{Fore.GREEN}[✔] No sensitive files found.{Style.RESET_ALL}")

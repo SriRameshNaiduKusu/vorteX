@@ -95,6 +95,9 @@ Options:
   --rate-limit RATE        Max requests per second
   --random-ua              Rotate User-Agent strings randomly
   --timeout TIMEOUT        Request timeout in seconds [default: 10]
+  --fast                   Enable fast mode — reduced payloads and checks for quicker scans
+  --skip MODULES           Comma-separated list of modules to skip during -all mode
+                           (e.g., redirect,wayback,cors)
 ```
 
 ---
@@ -131,8 +134,70 @@ vorteX -all -url https://example.com -o report.txt
 # Full recon with proxy and rate limiting
 vorteX -all -d example.com --proxy http://127.0.0.1:8080 --rate-limit 10 --random-ua
 
+# Fast mode — reduced payloads and checks for quicker scans
+vorteX -all -d example.com --fast
+
+# Skip slow modules (redirect, wayback)
+vorteX -all -d example.com --skip redirect,wayback
+
+# Combine fast mode with skipping
+vorteX -all -d example.com --fast --skip cors
+
 # Pipe targets for full recon
 echo "https://example.com" | vorteX -all -o report.json --format json
+```
+
+---
+
+### Performance Optimization (`--fast` & `--skip`)
+
+For large targets with thousands of discovered URLs, the `-all` mode can be slow due to combinatorial testing in modules like open redirect. Use these flags to speed things up:
+
+#### `--fast` — Reduced Payloads & Smart Filtering
+
+Enables fast mode across all supported modules:
+
+- **Open redirect**: Uses 5 core params × 3 payloads instead of 21 params × 6 payloads. For URLs that already have query parameters, still tests the full parameter list but with reduced payloads.
+- **CORS scan**: Tests with 1 origin (`https://evil.com`) instead of 3.
+- **Sensitive files**: Checks ~15 most critical paths instead of the full list.
+
+```bash
+vorteX -all -d example.com --fast
+```
+
+#### `--skip` — Skip Specific Modules
+
+Provides a comma-separated list of module names to skip entirely during `-all` mode:
+
+| Skip value   | Module skipped                    |
+|--------------|-----------------------------------|
+| `redirect`   | Open redirect detection           |
+| `cors`       | CORS misconfiguration scan        |
+| `sensitive`  | Sensitive file detection          |
+| `headers`    | Security header audit             |
+| `takeover`   | Subdomain takeover detection      |
+| `wayback`    | Wayback Machine URL mining        |
+| `ct`         | Certificate Transparency log mining |
+| `api`        | API endpoint discovery            |
+
+```bash
+# Skip open redirect and Wayback (slowest modules on large targets)
+vorteX -all -d example.com --skip redirect,wayback
+
+# Combine fast mode with skipping CORS
+vorteX -all -d example.com --fast --skip cors
+
+# Speed-optimised scan
+vorteX -all -d example.com -T 50 --timeout 5 --fast --skip wayback
+```
+
+#### Scale Warning
+
+When a large number of URLs is discovered (500+), vorteX automatically prints an estimate:
+
+```
+[ℹ] Large scan detected: 14081 URLs discovered. Estimated open redirect checks: ~1,774,206 requests.
+[ℹ] Tip: Use --fast for quicker scans, or --skip redirect to skip slow modules.
 ```
 
 ---

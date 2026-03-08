@@ -16,6 +16,7 @@ except ImportError:  # pragma: no cover
     _AIODNS_AVAILABLE = False
 
 from colorama import Fore, Style
+from tqdm import tqdm
 
 from vortex.utils import stop_event, display_banner
 
@@ -125,8 +126,9 @@ async def check_takeover(
 
     sem = asyncio.Semaphore(max_threads)
 
-    async def check_one(subdomain):
+    async def check_one(subdomain, pbar):
         if stop_event.is_set():
+            pbar.update(1)
             return
         async with sem:
             cname = await _resolve_cname(subdomain, resolver) if resolver else ""
@@ -140,6 +142,7 @@ async def check_takeover(
                     break
 
             if not matched_service:
+                pbar.update(1)
                 return
 
             # Verify with HTTP body check when a fingerprint is provided
@@ -164,15 +167,17 @@ async def check_takeover(
                 }
                 findings.append(finding)
                 color = Fore.RED if severity == "HIGH" else Fore.YELLOW
-                print(
+                tqdm.write(
                     f"{color}[!] Potential takeover [{severity}]: {subdomain} → "
                     f"{matched_service} | {detail}{Style.RESET_ALL}"
                 )
             if rate_limit:
                 await asyncio.sleep(1.0 / rate_limit)
+        pbar.update(1)
 
-    tasks = [check_one(s) for s in clean]
-    await asyncio.gather(*tasks)
+    with tqdm(total=len(clean), desc="Takeover Check", ncols=80) as pbar:
+        tasks = [check_one(s, pbar) for s in clean]
+        await asyncio.gather(*tasks)
 
     if not findings:
         print(f"{Fore.GREEN}[✔] No takeover vulnerabilities detected.{Style.RESET_ALL}")

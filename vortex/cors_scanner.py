@@ -11,6 +11,7 @@ import random
 
 import aiohttp
 from colorama import Fore, Style
+from tqdm import tqdm
 
 from vortex.utils import stop_event, display_banner
 from vortex.user_agents import USER_AGENTS
@@ -36,7 +37,7 @@ def _get_evil_origin(target_url):
         return "https://target.evil.com"
 
 
-async def _check_url_cors(session, url, proxy=None, timeout=10, random_ua=False):
+async def _check_url_cors(session, url, proxy=None, timeout=10, random_ua=False, fast=False):
     """Return a list of CORS findings for a single URL."""
     req_kwargs = {}
     if proxy:
@@ -48,7 +49,10 @@ async def _check_url_cors(session, url, proxy=None, timeout=10, random_ua=False)
 
     findings = []
     evil_origin = _get_evil_origin(url)
-    test_origins = [evil_origin] + _TEST_ORIGINS
+    if fast:
+        test_origins = ["https://evil.com"]
+    else:
+        test_origins = [evil_origin] + _TEST_ORIGINS
 
     for origin in test_origins:
         if stop_event.is_set():
@@ -106,6 +110,7 @@ async def check_cors(
     random_ua=False,
     rate_limit=None,
     max_threads=20,
+    fast=False,
 ):
     """Test *urls* for CORS misconfigurations.
 
@@ -117,6 +122,9 @@ async def check_cors(
         Path to write results.
     output_format : str
         ``'json'`` or ``'txt'``.
+    fast : bool
+        If True, only test with a single origin (``https://evil.com``) instead
+        of the full set of origins.
 
     Returns
     -------
@@ -126,18 +134,19 @@ async def check_cors(
     display_banner()
     print(
         f"{Fore.CYAN}[*] Testing {len(urls)} URL(s) for CORS "
-        f"misconfigurations...{Style.RESET_ALL}"
+        f"misconfigurations{' [fast mode]' if fast else ''}...{Style.RESET_ALL}"
     )
 
     all_findings = []
     sem = asyncio.Semaphore(max_threads)
 
-    async def handle(url):
+    async def handle(url, pbar):
         if stop_event.is_set():
+            pbar.update(1)
             return
         async with sem:
             async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-                findings = await _check_url_cors(session, url, proxy, timeout, random_ua)
+                findings = await _check_url_cors(session, url, proxy, timeout, random_ua, fast=fast)
                 for f in findings:
                     sev = f["severity"]
                     color = (
@@ -145,15 +154,17 @@ async def check_cors(
                         else Fore.YELLOW if sev == _SEVERITY_HIGH
                         else Fore.MAGENTA
                     )
-                    print(
+                    tqdm.write(
                         f"{color}[!] CORS [{sev}]: {f['url']} | "
                         f"{f['description']}{Style.RESET_ALL}"
                     )
                 all_findings.extend(findings)
             if rate_limit:
                 await asyncio.sleep(1.0 / rate_limit)
+        pbar.update(1)
 
-    await asyncio.gather(*[handle(u) for u in urls])
+    with tqdm(total=len(urls), desc="CORS Scan", ncols=80) as pbar:
+        await asyncio.gather(*[handle(u, pbar) for u in urls])
 
     if not all_findings:
         print(f"{Fore.GREEN}[✔] No CORS misconfigurations detected.{Style.RESET_ALL}")

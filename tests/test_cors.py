@@ -83,6 +83,34 @@ def test_check_cors_reflected_origin_critical():
     asyncio.run(run())
 
 
+def test_check_cors_fast_mode_uses_single_origin():
+    """In fast mode, only a single origin (https://evil.com) is tested."""
+    async def run():
+        from vortex.cors_scanner import check_cors
+
+        origins_tested = []
+
+        def make_resp(*args, **kwargs):
+            origin = kwargs.get("headers", {}).get("Origin", "")
+            origins_tested.append(origin)
+            return _make_mock_response(headers={"Content-Type": "text/html"})
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(side_effect=make_resp)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            with patch("aiohttp.TCPConnector", return_value=MagicMock()):
+                await check_cors(["https://example.com"], fast=True)
+
+        # Fast mode: only 1 origin tested ("https://evil.com")
+        assert len(origins_tested) == 1
+        assert origins_tested[0] == "https://evil.com"
+
+    asyncio.run(run())
+
+
 def test_check_cors_output_file(tmp_path):
     """check_cors writes findings to output file."""
     async def run():

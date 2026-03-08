@@ -11,6 +11,7 @@ import random
 
 import aiohttp
 from colorama import Fore, Style
+from tqdm import tqdm
 
 from vortex.utils import stop_event, display_banner
 from vortex.user_agents import USER_AGENTS
@@ -138,8 +139,9 @@ async def audit_headers(
     results = []
     sem = asyncio.Semaphore(max_threads)
 
-    async def handle(url):
+    async def handle(url, pbar):
         if stop_event.is_set():
+            pbar.update(1)
             return
         async with sem:
             async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
@@ -148,8 +150,10 @@ async def audit_headers(
                 _print_result(result)
             if rate_limit:
                 await asyncio.sleep(1.0 / rate_limit)
+        pbar.update(1)
 
-    await asyncio.gather(*[handle(u) for u in urls])
+    with tqdm(total=len(urls), desc="Header Audit", ncols=80) as pbar:
+        await asyncio.gather(*[handle(u, pbar) for u in urls])
 
     if output_file and results:
         with open(output_file, "w") as fh:

@@ -12,6 +12,7 @@ from urllib.parse import urlparse, urlencode, parse_qs
 
 import aiohttp
 from colorama import Fore, Style
+from tqdm import tqdm
 
 from vortex.utils import stop_event, display_banner
 from vortex.user_agents import USER_AGENTS
@@ -24,6 +25,9 @@ REDIRECT_PARAMS = [
     "forward", "location",
 ]
 
+# Reduced set of the most common redirect params for fast mode / URLs without query params
+REDIRECT_PARAMS_FAST = ["url", "redirect", "next", "goto", "return"]
+
 # Redirect test payloads
 REDIRECT_PAYLOADS = [
     "https://evil.com",
@@ -32,6 +36,13 @@ REDIRECT_PAYLOADS = [
     "https:evil.com",
     "//evil.com/%2f..",
     "https://evil.com%23@target.com",
+]
+
+# Reduced payloads for fast mode
+REDIRECT_PAYLOADS_FAST = [
+    "https://evil.com",
+    "//evil.com",
+    "/\\evil.com",
 ]
 
 _EVIL_HOST = "evil.com"
@@ -106,6 +117,7 @@ async def check_open_redirect(
     random_ua=False,
     rate_limit=None,
     max_threads=20,
+    fast=False,
 ):
     """Test *urls* for open redirect vulnerabilities.
 
@@ -121,6 +133,9 @@ async def check_open_redirect(
         Path to write results.
     output_format : str
         ``'json'`` or ``'txt'``.
+    fast : bool
+        If True, use reduced parameter and payload sets, and only test the
+        full parameter list on URLs that already have query parameters.
 
     Returns
     -------
@@ -128,24 +143,43 @@ async def check_open_redirect(
         Findings.
     """
     display_banner()
-    test_params = params if params is not None else REDIRECT_PARAMS
-    test_payloads = payloads if payloads is not None else REDIRECT_PAYLOADS
+
+    if fast:
+        default_params = REDIRECT_PARAMS_FAST
+        default_payloads = REDIRECT_PAYLOADS_FAST
+    else:
+        default_params = REDIRECT_PARAMS
+        default_payloads = REDIRECT_PAYLOADS
+
+    test_params = params if params is not None else default_params
+    test_payloads = payloads if payloads is not None else default_payloads
 
     print(
         f"{Fore.CYAN}[*] Testing {len(urls)} URL(s) for open redirects "
-        f"({len(test_params)} params × {len(test_payloads)} payloads)...{Style.RESET_ALL}"
+        f"({len(test_params)} params × {len(test_payloads)} payloads"
+        f"{' [fast mode]' if fast else ''})...{Style.RESET_ALL}"
     )
 
     findings = []
     sem = asyncio.Semaphore(max_threads)
 
-    async def handle(url):
+    async def handle(url, pbar):
         if stop_event.is_set():
+            pbar.update(1)
             return
+        # In fast mode (when params were not explicitly provided), use full param
+        # list only for URLs that already have query parameters; use the fast
+        # (reduced) list for URLs without query parameters.
+        if fast and params is None:
+            has_query = bool(urlparse(url).query)
+            url_params = REDIRECT_PARAMS if has_query else REDIRECT_PARAMS_FAST
+        else:
+            url_params = test_params
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-            for param in test_params:
+            for param in url_params:
                 for payload in test_payloads:
                     if stop_event.is_set():
+                        pbar.update(1)
                         return
                     async with sem:
                         result = await _test_param(
@@ -153,15 +187,17 @@ async def check_open_redirect(
                         )
                         if result:
                             findings.append(result)
-                            print(
+                            tqdm.write(
                                 f"{Fore.RED}[!] Open Redirect [{result['severity']}]: "
                                 f"{result['url']} → param={param} payload={payload} "
                                 f"Location={result['location']}{Style.RESET_ALL}"
                             )
                         if rate_limit:
                             await asyncio.sleep(1.0 / rate_limit)
+        pbar.update(1)
 
-    await asyncio.gather(*[handle(u) for u in urls])
+    with tqdm(total=len(urls), desc="Open Redirect", ncols=80) as pbar:
+        await asyncio.gather(*[handle(u, pbar) for u in urls])
 
     if not findings:
         print(f"{Fore.GREEN}[✔] No open redirect vulnerabilities detected.{Style.RESET_ALL}")

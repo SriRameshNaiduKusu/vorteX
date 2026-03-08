@@ -12,6 +12,47 @@ def test_sensitive_paths_not_empty():
     assert "/.git/config" in SENSITIVE_PATHS
 
 
+def test_sensitive_paths_fast_not_empty():
+    """SENSITIVE_PATHS_FAST should contain a smaller set of critical paths."""
+    from vortex.sensitive_files import SENSITIVE_PATHS, SENSITIVE_PATHS_FAST
+    assert len(SENSITIVE_PATHS_FAST) > 0
+    assert len(SENSITIVE_PATHS_FAST) < len(SENSITIVE_PATHS)
+    assert "/.env" in SENSITIVE_PATHS_FAST
+    assert "/.aws/credentials" in SENSITIVE_PATHS_FAST
+
+
+def test_scan_sensitive_files_fast_mode_uses_reduced_paths():
+    """In fast mode, scan_sensitive_files uses SENSITIVE_PATHS_FAST."""
+    async def run():
+        from vortex.sensitive_files import scan_sensitive_files, SENSITIVE_PATHS_FAST
+
+        paths_checked = []
+
+        resp = AsyncMock()
+        resp.status = 404
+        resp.headers = {"Content-Type": "text/plain"}
+        resp.read = AsyncMock(return_value=b"Not Found")
+        resp.__aenter__ = AsyncMock(return_value=resp)
+        resp.__aexit__ = AsyncMock(return_value=False)
+
+        def track_get(url, **kwargs):
+            paths_checked.append(url)
+            return resp
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(side_effect=track_get)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            with patch("aiohttp.TCPConnector", return_value=MagicMock()):
+                await scan_sensitive_files(["https://example.com"], fast=True)
+
+        assert len(paths_checked) == len(SENSITIVE_PATHS_FAST)
+
+    asyncio.run(run())
+
+
 def test_scan_sensitive_files_empty():
     """scan_sensitive_files with empty URL list returns empty findings."""
     async def run():

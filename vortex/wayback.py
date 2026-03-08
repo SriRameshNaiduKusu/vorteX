@@ -9,6 +9,7 @@ import logging
 
 import aiohttp
 from colorama import Fore, Style
+from tqdm import tqdm
 
 from vortex.utils import stop_event, display_banner
 
@@ -67,16 +68,18 @@ async def wayback_enum(
     connector = aiohttp.TCPConnector(ssl=False)
     async with aiohttp.ClientSession(connector=connector) as session:
         try:
-            async with session.get(
-                cdx_url, timeout=aiohttp.ClientTimeout(total=timeout), **req_kwargs
-            ) as resp:
-                if resp.status != 200:
-                    print(
-                        f"{Fore.YELLOW}[⚠] Wayback CDX returned HTTP {resp.status}. "
-                        f"Skipping.{Style.RESET_ALL}"
-                    )
-                    return []
-                data = await resp.json(content_type=None)
+            with tqdm(total=None, desc="Wayback CDX", ncols=80, unit="req") as pbar:
+                async with session.get(
+                    cdx_url, timeout=aiohttp.ClientTimeout(total=timeout), **req_kwargs
+                ) as resp:
+                    if resp.status != 200:
+                        tqdm.write(
+                            f"{Fore.YELLOW}[⚠] Wayback CDX returned HTTP {resp.status}. "
+                            f"Skipping.{Style.RESET_ALL}"
+                        )
+                        return []
+                    data = await resp.json(content_type=None)
+                    pbar.update(1)
         except asyncio.TimeoutError:
             print(f"{Fore.YELLOW}[⚠] Wayback Machine query timed out.{Style.RESET_ALL}")
             return []
