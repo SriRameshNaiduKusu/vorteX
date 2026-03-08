@@ -7,6 +7,15 @@ from urllib.parse import urlparse
 from colorama import Fore, Style
 
 
+def _count_lines(path):
+    """Return the number of non-empty lines in a file."""
+    try:
+        with open(path) as fh:
+            return sum(1 for line in fh if line.strip())
+    except (OSError, IOError):
+        return 0
+
+
 def _print_phase_banner(title: str) -> None:
     line = "═" * 63
     print(f"\n{Fore.CYAN}{line}{Style.RESET_ALL}")
@@ -154,11 +163,12 @@ async def run_full_recon(
             subdomain_wordlist = wordlist
         else:
             subdomain_wordlist, from_seclists = get_wordlist_for_size('subdomains', wordlist_size)
+            count = _count_lines(subdomain_wordlist)
             if from_seclists:
                 relative = _SECLISTS_FILES['subdomains'][wordlist_size]
-                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative}{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative} ({count} entries){Style.RESET_ALL}")
             else:
-                print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: subdomains.txt{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}[*] SecLists not found. Using built-in wordlist: subdomains.txt ({count} entries){Style.RESET_ALL}")
         t0 = time.monotonic()
         try:
             from vortex.subdomain import enumerate_subdomains
@@ -190,11 +200,12 @@ async def run_full_recon(
             dir_wordlist = wordlist
         else:
             dir_wordlist, from_seclists = get_wordlist_for_size('directories', wordlist_size)
+            count = _count_lines(dir_wordlist)
             if from_seclists:
                 relative = _SECLISTS_FILES['directories'][wordlist_size]
-                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative}{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative} ({count} entries){Style.RESET_ALL}")
             else:
-                print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: directories.txt{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}[*] SecLists not found. Using built-in wordlist: directories.txt ({count} entries){Style.RESET_ALL}")
         t0 = time.monotonic()
         try:
             from vortex.fuzzer import directory_fuzzing
@@ -293,11 +304,12 @@ async def run_full_recon(
             param_wordlist = wordlist
         else:
             param_wordlist, from_seclists = get_wordlist_for_size('parameters', wordlist_size)
+            count = _count_lines(param_wordlist)
             if from_seclists:
                 relative = _SECLISTS_FILES['parameters'][wordlist_size]
-                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative}{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative} ({count} entries){Style.RESET_ALL}")
             else:
-                print(f"{Fore.CYAN}[*] No wordlist provided — using built-in default: parameters.txt{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}[*] SecLists not found. Using built-in wordlist: parameters.txt ({count} entries){Style.RESET_ALL}")
         t0 = time.monotonic()
         try:
             from vortex.param_fuzzer import parameter_discovery
