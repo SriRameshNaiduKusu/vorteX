@@ -12,6 +12,7 @@ import random
 
 import aiohttp
 from colorama import Fore, Style
+from tqdm import tqdm
 
 from vortex.utils import stop_event, display_banner
 from vortex.user_agents import USER_AGENTS
@@ -198,22 +199,25 @@ async def discover_api_endpoints(
     js_api_paths = {}
     sem = asyncio.Semaphore(max_threads)
 
-    async def handle_url(base_url):
+    async def handle_url(base_url, pbar):
         if stop_event.is_set():
+            pbar.update(1)
             return
         connector = aiohttp.TCPConnector(ssl=False)
         async with aiohttp.ClientSession(connector=connector) as session:
             # Probe common API paths
+            stopped = False
             for path in API_PATHS:
                 if stop_event.is_set():
-                    return
+                    stopped = True
+                    break
                 async with sem:
                     result = await _probe_path(
                         session, base_url, path, proxy, timeout, random_ua
                     )
                     if result:
                         found_endpoints.append(result)
-                        print(
+                        tqdm.write(
                             f"{Fore.GREEN}[✔] API endpoint: {result['url']} "
                             f"(HTTP {result['status']}, {result['content_type']}){Style.RESET_ALL}"
                         )
@@ -222,23 +226,26 @@ async def discover_api_endpoints(
                             types = await _graphql_introspect(session, result["url"], proxy, timeout)
                             if types:
                                 graphql_types[result["url"]] = types
-                                print(
+                                tqdm.write(
                                     f"{Fore.YELLOW}  [GraphQL] Types: "
                                     f"{', '.join(types[:10])}{Style.RESET_ALL}"
                                 )
                     if rate_limit:
                         await asyncio.sleep(1.0 / rate_limit)
 
-            # Extract API paths from JS files
-            js_paths = await _extract_js_endpoints(session, base_url, proxy, timeout)
-            if js_paths:
-                js_api_paths[base_url] = js_paths
-                print(
-                    f"{Fore.YELLOW}  [JS] Extracted {len(js_paths)} API path(s) "
-                    f"from JS files on {base_url}{Style.RESET_ALL}"
-                )
+            # Extract API paths from JS files (skip if stopped)
+            if not stopped:
+                js_paths = await _extract_js_endpoints(session, base_url, proxy, timeout)
+                if js_paths:
+                    js_api_paths[base_url] = js_paths
+                    tqdm.write(
+                        f"{Fore.YELLOW}  [JS] Extracted {len(js_paths)} API path(s) "
+                        f"from JS files on {base_url}{Style.RESET_ALL}"
+                    )
+        pbar.update(1)
 
-    await asyncio.gather(*[handle_url(u) for u in urls])
+    with tqdm(total=len(urls), desc="API Discovery", ncols=80) as pbar:
+        await asyncio.gather(*[handle_url(u, pbar) for u in urls])
 
     results = {
         "found_endpoints": found_endpoints,

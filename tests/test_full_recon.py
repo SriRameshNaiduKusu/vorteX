@@ -28,6 +28,8 @@ def _build_parser():
     parser.add_argument("--random-ua", action="store_true")
     parser.add_argument("--timeout", type=float, default=10)
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--fast", action="store_true")
+    parser.add_argument("--skip", default="")
     return parser
 
 
@@ -268,5 +270,125 @@ def test_wordlist_dependent_modules_use_defaults_without_wordlist():
         _subdomains.assert_awaited_once()
         _fuzz.assert_awaited_once()
         _params.assert_awaited_once()
+
+    asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# Test: --fast and --skip CLI flags are recognised
+# ---------------------------------------------------------------------------
+
+def test_fast_flag_recognised():
+    parser = _build_parser()
+    args = parser.parse_args(["-all", "-url", "https://example.com", "--fast"])
+    assert args.fast is True
+
+
+def test_fast_flag_default_false():
+    parser = _build_parser()
+    args = parser.parse_args(["-all", "-url", "https://example.com"])
+    assert args.fast is False
+
+
+def test_skip_flag_recognised():
+    parser = _build_parser()
+    args = parser.parse_args(["-all", "-url", "https://example.com", "--skip", "redirect,cors"])
+    assert args.skip == "redirect,cors"
+
+
+def test_skip_flag_default_empty():
+    parser = _build_parser()
+    args = parser.parse_args(["-all", "-url", "https://example.com"])
+    assert args.skip == ""
+
+
+# ---------------------------------------------------------------------------
+# Test: --skip prevents skipped modules from being called
+# ---------------------------------------------------------------------------
+
+def test_skip_redirect_prevents_open_redirect_call():
+    """When 'redirect' is in --skip, check_open_redirect should not be called."""
+
+    async def run():
+        from vortex import full_recon as fr
+
+        _redirect = AsyncMock(return_value=[])
+
+        with (
+            patch("vortex.dns_records.dns_enum", AsyncMock(return_value={})),
+            patch("vortex.ssl_analysis.ssl_check", AsyncMock(return_value={})),
+            patch("vortex.port_scanner.port_scan", AsyncMock(return_value={"open_ports": []})),
+            patch("vortex.subdomain.enumerate_subdomains", AsyncMock(return_value=[])),
+            patch("vortex.fuzzer.directory_fuzzing", AsyncMock(return_value=[])),
+            patch("vortex.tech_fingerprinting.fingerprint_technologies", AsyncMock(return_value={})),
+            patch("vortex.crawler.crawl_domain", AsyncMock(return_value=None)),
+            patch("vortex.js_discovery.discover_js_links", AsyncMock(return_value=None)),
+            patch("vortex.email_harvester.harvest_emails", AsyncMock(return_value=[])),
+            patch("vortex.param_fuzzer.parameter_discovery", AsyncMock(return_value=None)),
+            patch("vortex.open_redirect.check_open_redirect", _redirect),
+        ):
+            await fr.run_full_recon(
+                targets=["https://example.com"],
+                domain="example.com",
+                wordlist="/tmp/fake_wordlist.txt",
+                threads=5,
+                output=None,
+                depth=1,
+                method="GET",
+                headers={},
+                output_format="txt",
+                proxy=None,
+                rate_limit=None,
+                random_ua=False,
+                timeout=5,
+                verbose=False,
+                skip="redirect",
+            )
+
+        _redirect.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_skip_cors_prevents_cors_call():
+    """When 'cors' is in --skip, check_cors should not be called."""
+
+    async def run():
+        from vortex import full_recon as fr
+
+        _cors = AsyncMock(return_value=[])
+
+        with (
+            patch("vortex.dns_records.dns_enum", AsyncMock(return_value={})),
+            patch("vortex.ssl_analysis.ssl_check", AsyncMock(return_value={})),
+            patch("vortex.port_scanner.port_scan", AsyncMock(return_value={"open_ports": []})),
+            patch("vortex.subdomain.enumerate_subdomains", AsyncMock(return_value=[])),
+            patch("vortex.fuzzer.directory_fuzzing", AsyncMock(return_value=[])),
+            patch("vortex.tech_fingerprinting.fingerprint_technologies", AsyncMock(return_value={})),
+            patch("vortex.crawler.crawl_domain", AsyncMock(return_value=None)),
+            patch("vortex.js_discovery.discover_js_links", AsyncMock(return_value=None)),
+            patch("vortex.email_harvester.harvest_emails", AsyncMock(return_value=[])),
+            patch("vortex.param_fuzzer.parameter_discovery", AsyncMock(return_value=None)),
+            patch("vortex.cors_scanner.check_cors", _cors),
+        ):
+            await fr.run_full_recon(
+                targets=["https://example.com"],
+                domain="example.com",
+                wordlist="/tmp/fake_wordlist.txt",
+                threads=5,
+                output=None,
+                depth=1,
+                method="GET",
+                headers={},
+                output_format="txt",
+                proxy=None,
+                rate_limit=None,
+                random_ua=False,
+                timeout=5,
+                verbose=False,
+                skip="cors",
+            )
+
+        _cors.assert_not_awaited()
 
     asyncio.run(run())

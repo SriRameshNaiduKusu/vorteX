@@ -108,6 +108,11 @@ def main():
     parser.add_argument("--port-range", help="Custom port range for port scan (e.g., 1-1000)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose/debug logging")
     parser.add_argument("--version", action="version", version=f"vorteX v{VERSION}")
+    parser.add_argument("--fast", action="store_true",
+                        help="Enable fast mode — reduced payloads and checks for quicker scans")
+    parser.add_argument("--skip", default="",
+                        help="Comma-separated list of modules to skip during -all mode "
+                             "(e.g., redirect,wayback,cors)")
 
     args = parser.parse_args()
 
@@ -157,6 +162,8 @@ def main():
             random_ua=args.random_ua,
             timeout=args.timeout,
             verbose=args.verbose,
+            fast=args.fast,
+            skip=args.skip,
         ))
 
     elif args.domain and not any([args.dns_enum, args.ssl_check, args.port_scan]):
@@ -321,7 +328,7 @@ def main():
             sys.exit(1)
         asyncio.run(check_cors(
             targets, output_file=args.output, output_format=args.format,
-            max_threads=args.threads, **common_kwargs
+            max_threads=args.threads, fast=args.fast, **common_kwargs
         ))
 
     elif args.sensitive_files:
@@ -331,7 +338,7 @@ def main():
             sys.exit(1)
         asyncio.run(scan_sensitive_files(
             targets, output_file=args.output, output_format=args.format,
-            max_threads=args.threads, **common_kwargs
+            max_threads=args.threads, fast=args.fast, **common_kwargs
         ))
 
     elif args.header_audit:
@@ -351,7 +358,7 @@ def main():
             sys.exit(1)
         asyncio.run(check_open_redirect(
             targets, output_file=args.output, output_format=args.format,
-            max_threads=args.threads, **common_kwargs
+            max_threads=args.threads, fast=args.fast, **common_kwargs
         ))
 
     elif args.api_discovery:

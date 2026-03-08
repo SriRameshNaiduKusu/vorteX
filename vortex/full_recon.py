@@ -56,12 +56,17 @@ async def run_full_recon(
     timeout,
     verbose,
     wordlist_size='small',
+    fast=False,
+    skip='',
 ):
     """Run all recon modules sequentially, feeding results forward."""
     scan_start = time.monotonic()
     all_discovered_urls: set[str] = set(targets)
     all_results: dict = {}
     failed_modules: list[str] = []
+
+    # Parse skip list
+    skip_modules: set[str] = {s.strip().lower() for s in skip.split(",") if s.strip()}
 
     common_kwargs = dict(
         proxy=proxy,
@@ -321,41 +326,47 @@ async def run_full_recon(
 
     if domain:
         # Certificate Transparency log mining
-        t0 = time.monotonic()
-        try:
-            from vortex.ct_enum import ct_search
+        if "ct" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping CT log mining (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.ct_enum import ct_search
 
-            ct_subdomains = await ct_search(
-                domain,
-                output_file=None,
-                output_format=output_format,
-                **common_kwargs,
-            )
-            all_results["ct_subdomains"] = ct_subdomains
-            all_discovered_urls.update(f"https://{s}" for s in ct_subdomains)
-            _print_phase_summary("CT log subdomains", len(ct_subdomains), time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"CT log mining failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] CT log mining failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("ct")
+                ct_subdomains = await ct_search(
+                    domain,
+                    output_file=None,
+                    output_format=output_format,
+                    **common_kwargs,
+                )
+                all_results["ct_subdomains"] = ct_subdomains
+                all_discovered_urls.update(f"https://{s}" for s in ct_subdomains)
+                _print_phase_summary("CT log subdomains", len(ct_subdomains), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"CT log mining failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] CT log mining failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("ct")
 
         # Wayback Machine URL mining
-        t0 = time.monotonic()
-        try:
-            from vortex.wayback import wayback_enum
+        if "wayback" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping Wayback Machine mining (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.wayback import wayback_enum
 
-            wayback_urls = await wayback_enum(
-                domain,
-                output_file=None,
-                output_format=output_format,
-                **common_kwargs,
-            )
-            all_results["wayback_urls"] = wayback_urls
-            _print_phase_summary("Wayback URLs", len(wayback_urls), time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"Wayback mining failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] Wayback mining failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("wayback")
+                wayback_urls = await wayback_enum(
+                    domain,
+                    output_file=None,
+                    output_format=output_format,
+                    **common_kwargs,
+                )
+                all_results["wayback_urls"] = wayback_urls
+                _print_phase_summary("Wayback URLs", len(wayback_urls), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"Wayback mining failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] Wayback mining failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("wayback")
     else:
         print(f"{Fore.YELLOW}[ℹ] No domain provided — skipping CT log and Wayback mining.{Style.RESET_ALL}")
 
@@ -364,120 +375,157 @@ async def run_full_recon(
 
     active_url_list = list(all_discovered_urls)
 
+    # Emit a scale warning for large URL sets before running slow modules
+    _LARGE_SCAN_THRESHOLD = 500
+    if len(active_url_list) >= _LARGE_SCAN_THRESHOLD:
+        from vortex.open_redirect import REDIRECT_PARAMS, REDIRECT_PAYLOADS, REDIRECT_PARAMS_FAST, REDIRECT_PAYLOADS_FAST
+        if fast:
+            estimated_redirect = len(active_url_list) * len(REDIRECT_PARAMS_FAST) * len(REDIRECT_PAYLOADS_FAST)
+        else:
+            estimated_redirect = len(active_url_list) * len(REDIRECT_PARAMS) * len(REDIRECT_PAYLOADS)
+        print(
+            f"{Fore.CYAN}[ℹ] Large scan detected: {len(active_url_list)} URLs discovered. "
+            f"Estimated open redirect checks: ~{estimated_redirect:,} requests.{Style.RESET_ALL}"
+        )
+        print(
+            f"{Fore.CYAN}[ℹ] Tip: Use --fast for quicker scans, or --skip redirect to skip slow modules.{Style.RESET_ALL}"
+        )
+
     # Subdomain takeover
     if found_subdomains:
-        t0 = time.monotonic()
-        try:
-            from vortex.takeover import check_takeover
+        if "takeover" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping subdomain takeover detection (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.takeover import check_takeover
 
-            takeover_findings = await check_takeover(
-                found_subdomains,
-                output_file=None,
-                output_format=output_format,
-                **common_kwargs,
-            )
-            all_results["takeover"] = takeover_findings
-            _print_phase_summary("Takeover findings", len(takeover_findings), time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"Takeover scan failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] Takeover scan failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("takeover")
+                takeover_findings = await check_takeover(
+                    found_subdomains,
+                    output_file=None,
+                    output_format=output_format,
+                    **common_kwargs,
+                )
+                all_results["takeover"] = takeover_findings
+                _print_phase_summary("Takeover findings", len(takeover_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"Takeover scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] Takeover scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("takeover")
 
     # CORS scan
     if active_url_list:
-        t0 = time.monotonic()
-        try:
-            from vortex.cors_scanner import check_cors
+        if "cors" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping CORS scan (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.cors_scanner import check_cors
 
-            cors_findings = await check_cors(
-                active_url_list,
-                output_file=None,
-                output_format=output_format,
-                **common_kwargs,
-            )
-            all_results["cors"] = cors_findings
-            _print_phase_summary("CORS findings", len(cors_findings), time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"CORS scan failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] CORS scan failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("cors")
+                cors_findings = await check_cors(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    fast=fast,
+                    **common_kwargs,
+                )
+                all_results["cors"] = cors_findings
+                _print_phase_summary("CORS findings", len(cors_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"CORS scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] CORS scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("cors")
 
     # Sensitive file detection
     if active_url_list:
-        t0 = time.monotonic()
-        try:
-            from vortex.sensitive_files import scan_sensitive_files
+        if "sensitive" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping sensitive file detection (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.sensitive_files import scan_sensitive_files
 
-            sensitive_findings = await scan_sensitive_files(
-                active_url_list,
-                output_file=None,
-                output_format=output_format,
-                **common_kwargs,
-            )
-            all_results["sensitive"] = sensitive_findings
-            _print_phase_summary("Sensitive files", len(sensitive_findings), time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"Sensitive file scan failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] Sensitive file scan failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("sensitive")
+                sensitive_findings = await scan_sensitive_files(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    fast=fast,
+                    **common_kwargs,
+                )
+                all_results["sensitive"] = sensitive_findings
+                _print_phase_summary("Sensitive files", len(sensitive_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"Sensitive file scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] Sensitive file scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("sensitive")
 
     # Security header audit
     if active_url_list:
-        t0 = time.monotonic()
-        try:
-            from vortex.header_audit import audit_headers
+        if "headers" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping security header audit (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.header_audit import audit_headers
 
-            header_results = await audit_headers(
-                active_url_list,
-                output_file=None,
-                output_format=output_format,
-                **common_kwargs,
-            )
-            all_results["headers"] = header_results
-            _print_phase_summary("Header audits", len(header_results), time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"Header audit failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] Header audit failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("headers")
+                header_results = await audit_headers(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    **common_kwargs,
+                )
+                all_results["headers"] = header_results
+                _print_phase_summary("Header audits", len(header_results), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"Header audit failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] Header audit failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("headers")
 
     # Open redirect detection
     if active_url_list:
-        t0 = time.monotonic()
-        try:
-            from vortex.open_redirect import check_open_redirect
+        if "redirect" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping open redirect detection (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.open_redirect import check_open_redirect
 
-            redirect_findings = await check_open_redirect(
-                active_url_list,
-                output_file=None,
-                output_format=output_format,
-                **common_kwargs,
-            )
-            all_results["redirects"] = redirect_findings
-            _print_phase_summary("Open redirect findings", len(redirect_findings), time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"Open redirect scan failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] Open redirect scan failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("redirects")
+                redirect_findings = await check_open_redirect(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    fast=fast,
+                    **common_kwargs,
+                )
+                all_results["redirects"] = redirect_findings
+                _print_phase_summary("Open redirect findings", len(redirect_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"Open redirect scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] Open redirect scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("redirects")
 
     # API endpoint discovery
     if active_url_list:
-        t0 = time.monotonic()
-        try:
-            from vortex.api_discovery import discover_api_endpoints
+        if "api" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping API endpoint discovery (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.api_discovery import discover_api_endpoints
 
-            api_results = await discover_api_endpoints(
-                active_url_list,
-                output_file=None,
-                output_format=output_format,
-                **common_kwargs,
-            )
-            all_results["api"] = api_results
-            api_count = len(api_results.get("found_endpoints", []))
-            _print_phase_summary("API endpoints found", api_count, time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"API discovery failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] API discovery failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("api")
+                api_results = await discover_api_endpoints(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    **common_kwargs,
+                )
+                all_results["api"] = api_results
+                api_count = len(api_results.get("found_endpoints", []))
+                _print_phase_summary("API endpoints found", api_count, time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"API discovery failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] API discovery failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("api")
 
     # ── Scan Summary ──────────────────────────────────────────────────────────
     scan_duration = time.monotonic() - scan_start
