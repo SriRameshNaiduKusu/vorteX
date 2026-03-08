@@ -34,4 +34,13 @@ def setup_logging(verbose: bool = False):
     logging.basicConfig(level=level, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
+def _count_lines(path):
+    """Return the number of non-empty lines in a file."""
+    try:
+        with open(path) as fh:
+            return sum(1 for line in fh if line.strip())
+    except (OSError, IOError):
+        return 0
+
+
 

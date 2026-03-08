@@ -6,14 +6,7 @@ from urllib.parse import urlparse
 
 from colorama import Fore, Style
 
-
-def _count_lines(path):
-    """Return the number of non-empty lines in a file."""
-    try:
-        with open(path) as fh:
-            return sum(1 for line in fh if line.strip())
-    except (OSError, IOError):
-        return 0
+from vortex.utils import _count_lines
 
 
 def _print_phase_banner(title: str) -> None:
@@ -89,68 +82,77 @@ async def run_full_recon(
 
     # DNS Records
     if domain:
-        t0 = time.monotonic()
-        try:
-            from vortex.dns_records import dns_enum
+        if "dns" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping DNS enumeration (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.dns_records import dns_enum
 
-            dns_results = await dns_enum(domain, output_file=None, output_format=output_format)
-            all_results["dns"] = dns_results
-            total_dns = sum(len(v) for v in dns_results.values())
-            _print_phase_summary("DNS records", total_dns, time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"DNS enumeration failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] DNS enumeration failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("dns")
+                dns_results = await dns_enum(domain, output_file=None, output_format=output_format)
+                all_results["dns"] = dns_results
+                total_dns = sum(len(v) for v in dns_results.values())
+                _print_phase_summary("DNS records", total_dns, time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"DNS enumeration failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] DNS enumeration failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("dns")
 
     # SSL/TLS
-    for target in targets:
-        t0 = time.monotonic()
-        host = _extract_host(target)
-        port = 443
-        raw_netloc = urlparse(target).netloc or target
-        if raw_netloc.startswith("["):
-            bracket_end = raw_netloc.find("]")
-            if bracket_end != -1 and bracket_end + 1 < len(raw_netloc) and raw_netloc[bracket_end + 1] == ":":
-                port = int(raw_netloc[bracket_end + 2:])
-                host = raw_netloc[1:bracket_end]
-        elif ":" in raw_netloc:
+    if "ssl" in skip_modules:
+        print(f"{Fore.CYAN}[ℹ] Skipping SSL/TLS check (--skip){Style.RESET_ALL}")
+    else:
+        for target in targets:
+            t0 = time.monotonic()
+            host = _extract_host(target)
+            port = 443
+            raw_netloc = urlparse(target).netloc or target
+            if raw_netloc.startswith("["):
+                bracket_end = raw_netloc.find("]")
+                if bracket_end != -1 and bracket_end + 1 < len(raw_netloc) and raw_netloc[bracket_end + 1] == ":":
+                    port = int(raw_netloc[bracket_end + 2:])
+                    host = raw_netloc[1:bracket_end]
+            elif ":" in raw_netloc:
+                try:
+                    host, port_str = raw_netloc.rsplit(":", 1)
+                    port = int(port_str)
+                except ValueError:
+                    pass
             try:
-                host, port_str = raw_netloc.rsplit(":", 1)
-                port = int(port_str)
-            except ValueError:
-                pass
-        try:
-            from vortex.ssl_analysis import ssl_check
+                from vortex.ssl_analysis import ssl_check
 
-            ssl_results = await ssl_check(host, port=port, output_file=None, output_format=output_format)
-            all_results["ssl"] = ssl_results
-            _print_phase_summary("SSL/TLS check", 1, time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"SSL check failed for {host}: {exc}")
-            print(f"{Fore.YELLOW}[⚠] SSL check failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("ssl")
+                ssl_results = await ssl_check(host, port=port, output_file=None, output_format=output_format)
+                all_results["ssl"] = ssl_results
+                _print_phase_summary("SSL/TLS check", 1, time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"SSL check failed for {host}: {exc}")
+                print(f"{Fore.YELLOW}[⚠] SSL check failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("ssl")
 
     # Port Scanning
-    for target in targets:
-        t0 = time.monotonic()
-        host = _extract_host(target)
-        try:
-            from vortex.port_scanner import port_scan
+    if "ports" in skip_modules:
+        print(f"{Fore.CYAN}[ℹ] Skipping port scanning (--skip){Style.RESET_ALL}")
+    else:
+        for target in targets:
+            t0 = time.monotonic()
+            host = _extract_host(target)
+            try:
+                from vortex.port_scanner import port_scan
 
-            port_results = await port_scan(
-                host,
-                max_threads=threads,
-                output_file=None,
-                output_format=output_format,
-                timeout=timeout,
-            )
-            all_results["ports"] = port_results
-            open_count = len(port_results.get("open_ports", []))
-            _print_phase_summary("Open ports", open_count, time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"Port scan failed for {host}: {exc}")
-            print(f"{Fore.YELLOW}[⚠] Port scan failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("ports")
+                port_results = await port_scan(
+                    host,
+                    max_threads=threads,
+                    output_file=None,
+                    output_format=output_format,
+                    timeout=timeout,
+                )
+                all_results["ports"] = port_results
+                open_count = len(port_results.get("open_ports", []))
+                _print_phase_summary("Open ports", open_count, time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"Port scan failed for {host}: {exc}")
+                print(f"{Fore.YELLOW}[⚠] Port scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("ports")
 
     # ── Phase 2: Subdomain & Surface Expansion ────────────────────────────────
     _print_phase_banner("Phase 2: Subdomain & Surface Expansion")
@@ -159,35 +161,38 @@ async def run_full_recon(
 
     found_subdomains: list[str] = []
     if domain:
-        if wordlist:
-            subdomain_wordlist = wordlist
+        if "subdomains" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping subdomain enumeration (--skip){Style.RESET_ALL}")
         else:
-            subdomain_wordlist, from_seclists = get_wordlist_for_size('subdomains', wordlist_size)
-            count = _count_lines(subdomain_wordlist)
-            if from_seclists:
-                relative = _SECLISTS_FILES['subdomains'][wordlist_size]
-                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative} ({count} entries){Style.RESET_ALL}")
+            if wordlist:
+                subdomain_wordlist = wordlist
             else:
-                print(f"{Fore.CYAN}[*] SecLists not found. Using built-in wordlist: subdomains.txt ({count} entries){Style.RESET_ALL}")
-        t0 = time.monotonic()
-        try:
-            from vortex.subdomain import enumerate_subdomains
+                subdomain_wordlist, from_seclists = get_wordlist_for_size('subdomains', wordlist_size)
+                count = _count_lines(subdomain_wordlist)
+                if from_seclists:
+                    relative = _SECLISTS_FILES['subdomains'][wordlist_size]
+                    print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative} ({count} entries){Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.CYAN}[*] SecLists not found. Using built-in wordlist: subdomains.txt ({count} entries){Style.RESET_ALL}")
+            t0 = time.monotonic()
+            try:
+                from vortex.subdomain import enumerate_subdomains
 
-            found_subdomains = await enumerate_subdomains(
-                domain,
-                subdomain_wordlist,
-                threads,
-                output_file=None,
-                output_format=output_format,
-                **common_kwargs,
-            )
-            all_discovered_urls.update(found_subdomains)
-            all_results["subdomains"] = found_subdomains
-            _print_phase_summary("Subdomains found", len(found_subdomains), time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"Subdomain enumeration failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] Subdomain enumeration failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("subdomains")
+                found_subdomains = await enumerate_subdomains(
+                    domain,
+                    subdomain_wordlist,
+                    threads,
+                    output_file=None,
+                    output_format=output_format,
+                    **common_kwargs,
+                )
+                all_discovered_urls.update(found_subdomains)
+                all_results["subdomains"] = found_subdomains
+                _print_phase_summary("Subdomains found", len(found_subdomains), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"Subdomain enumeration failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] Subdomain enumeration failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("subdomains")
     else:
         print(f"{Fore.YELLOW}[ℹ] No domain provided — skipping subdomain enumeration.{Style.RESET_ALL}")
 
@@ -196,58 +201,64 @@ async def run_full_recon(
 
     fuzzed_urls: list[str] = []
     if all_discovered_urls:
-        if wordlist:
-            dir_wordlist = wordlist
+        if "fuzzing" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping directory fuzzing (--skip){Style.RESET_ALL}")
         else:
-            dir_wordlist, from_seclists = get_wordlist_for_size('directories', wordlist_size)
-            count = _count_lines(dir_wordlist)
-            if from_seclists:
-                relative = _SECLISTS_FILES['directories'][wordlist_size]
-                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative} ({count} entries){Style.RESET_ALL}")
+            if wordlist:
+                dir_wordlist = wordlist
             else:
-                print(f"{Fore.CYAN}[*] SecLists not found. Using built-in wordlist: directories.txt ({count} entries){Style.RESET_ALL}")
-        t0 = time.monotonic()
-        try:
-            from vortex.fuzzer import directory_fuzzing
+                dir_wordlist, from_seclists = get_wordlist_for_size('directories', wordlist_size)
+                count = _count_lines(dir_wordlist)
+                if from_seclists:
+                    relative = _SECLISTS_FILES['directories'][wordlist_size]
+                    print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative} ({count} entries){Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.CYAN}[*] SecLists not found. Using built-in wordlist: directories.txt ({count} entries){Style.RESET_ALL}")
+            t0 = time.monotonic()
+            try:
+                from vortex.fuzzer import directory_fuzzing
 
-            fuzzed_urls = await directory_fuzzing(
-                list(all_discovered_urls),
-                dir_wordlist,
-                threads,
-                output_file=None,
-                output_format=output_format,
-                **common_kwargs,
-            )
-            all_discovered_urls.update(fuzzed_urls)
-            all_results["fuzzing"] = fuzzed_urls
-            _print_phase_summary("Fuzzed URLs found", len(fuzzed_urls), time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"Directory fuzzing failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] Directory fuzzing failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("fuzzing")
+                fuzzed_urls = await directory_fuzzing(
+                    list(all_discovered_urls),
+                    dir_wordlist,
+                    threads,
+                    output_file=None,
+                    output_format=output_format,
+                    **common_kwargs,
+                )
+                all_discovered_urls.update(fuzzed_urls)
+                all_results["fuzzing"] = fuzzed_urls
+                _print_phase_summary("Fuzzed URLs found", len(fuzzed_urls), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"Directory fuzzing failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] Directory fuzzing failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("fuzzing")
 
     # Technology Fingerprinting
     tech_count = 0
-    t0 = time.monotonic()
-    try:
-        from vortex.tech_fingerprinting import fingerprint_technologies
+    if "tech" in skip_modules:
+        print(f"{Fore.CYAN}[ℹ] Skipping technology fingerprinting (--skip){Style.RESET_ALL}")
+    else:
+        t0 = time.monotonic()
+        try:
+            from vortex.tech_fingerprinting import fingerprint_technologies
 
-        tech_results = await fingerprint_technologies(
-            list(all_discovered_urls),
-            output_file=None,
-            output_format=output_format,
-            max_threads=threads,
-            **common_kwargs,
-        )
-        all_results["tech"] = tech_results
-        tech_count = sum(
-            1 for v in tech_results.values() if v and v != ["No identifiable technologies detected"]
-        )
-        _print_phase_summary("URLs fingerprinted", len(tech_results), time.monotonic() - t0)
-    except Exception as exc:
-        logging.warning(f"Technology fingerprinting failed: {exc}")
-        print(f"{Fore.YELLOW}[⚠] Technology fingerprinting failed: {exc}. Continuing...{Style.RESET_ALL}")
-        failed_modules.append("tech")
+            tech_results = await fingerprint_technologies(
+                list(all_discovered_urls),
+                output_file=None,
+                output_format=output_format,
+                max_threads=threads,
+                **common_kwargs,
+            )
+            all_results["tech"] = tech_results
+            tech_count = sum(
+                1 for v in tech_results.values() if v and v != ["No identifiable technologies detected"]
+            )
+            _print_phase_summary("URLs fingerprinted", len(tech_results), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"Technology fingerprinting failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] Technology fingerprinting failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("tech")
 
     # ── Phase 4: Deep Analysis ────────────────────────────────────────────────
     _print_phase_banner("Phase 4: Deep Analysis")
@@ -255,81 +266,93 @@ async def run_full_recon(
     url_list = list(all_discovered_urls)
 
     # Crawling
-    t0 = time.monotonic()
-    try:
-        from vortex.crawler import crawl_domain
+    if "crawl" in skip_modules:
+        print(f"{Fore.CYAN}[ℹ] Skipping web crawling (--skip){Style.RESET_ALL}")
+    else:
+        t0 = time.monotonic()
+        try:
+            from vortex.crawler import crawl_domain
 
-        await crawl_domain(url_list, depth, output_file=None, output_format=output_format, **common_kwargs)
-        all_results["crawl"] = {}
-        _print_phase_summary("Crawl targets processed", len(url_list), time.monotonic() - t0)
-    except Exception as exc:
-        logging.warning(f"Crawling failed: {exc}")
-        print(f"{Fore.YELLOW}[⚠] Crawling failed: {exc}. Continuing...{Style.RESET_ALL}")
-        failed_modules.append("crawl")
+            await crawl_domain(url_list, depth, output_file=None, output_format=output_format, **common_kwargs)
+            all_results["crawl"] = {}
+            _print_phase_summary("Crawl targets processed", len(url_list), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"Crawling failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] Crawling failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("crawl")
 
     # JS Discovery
-    t0 = time.monotonic()
-    try:
-        from vortex.js_discovery import discover_js_links
+    if "js" in skip_modules:
+        print(f"{Fore.CYAN}[ℹ] Skipping JS discovery (--skip){Style.RESET_ALL}")
+    else:
+        t0 = time.monotonic()
+        try:
+            from vortex.js_discovery import discover_js_links
 
-        await discover_js_links(url_list, depth, output_file=None, output_format=output_format, **common_kwargs)
-        all_results["js"] = {}
-        _print_phase_summary("JS discovery targets", len(url_list), time.monotonic() - t0)
-    except Exception as exc:
-        logging.warning(f"JS discovery failed: {exc}")
-        print(f"{Fore.YELLOW}[⚠] JS discovery failed: {exc}. Continuing...{Style.RESET_ALL}")
-        failed_modules.append("js")
+            await discover_js_links(url_list, depth, output_file=None, output_format=output_format, **common_kwargs)
+            all_results["js"] = {}
+            _print_phase_summary("JS discovery targets", len(url_list), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"JS discovery failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] JS discovery failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("js")
 
     # Email Harvesting
     email_results: list = []
-    t0 = time.monotonic()
-    try:
-        from vortex.email_harvester import harvest_emails
+    if "emails" in skip_modules:
+        print(f"{Fore.CYAN}[ℹ] Skipping email harvesting (--skip){Style.RESET_ALL}")
+    else:
+        t0 = time.monotonic()
+        try:
+            from vortex.email_harvester import harvest_emails
 
-        email_results = await harvest_emails(
-            url_list, depth=depth, output_file=None, output_format=output_format, **common_kwargs
-        )
-        all_results["emails"] = email_results
-        _print_phase_summary("Emails harvested", len(email_results), time.monotonic() - t0)
-    except Exception as exc:
-        logging.warning(f"Email harvesting failed: {exc}")
-        print(f"{Fore.YELLOW}[⚠] Email harvesting failed: {exc}. Continuing...{Style.RESET_ALL}")
-        failed_modules.append("emails")
+            email_results = await harvest_emails(
+                url_list, depth=depth, output_file=None, output_format=output_format, **common_kwargs
+            )
+            all_results["emails"] = email_results
+            _print_phase_summary("Emails harvested", len(email_results), time.monotonic() - t0)
+        except Exception as exc:
+            logging.warning(f"Email harvesting failed: {exc}")
+            print(f"{Fore.YELLOW}[⚠] Email harvesting failed: {exc}. Continuing...{Style.RESET_ALL}")
+            failed_modules.append("emails")
 
     # ── Phase 5: Parameter Analysis ───────────────────────────────────────────
     _print_phase_banner("Phase 5: Parameter Analysis")
 
     if url_list:
-        if wordlist:
-            param_wordlist = wordlist
+        if "params" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping parameter fuzzing (--skip){Style.RESET_ALL}")
         else:
-            param_wordlist, from_seclists = get_wordlist_for_size('parameters', wordlist_size)
-            count = _count_lines(param_wordlist)
-            if from_seclists:
-                relative = _SECLISTS_FILES['parameters'][wordlist_size]
-                print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative} ({count} entries){Style.RESET_ALL}")
+            if wordlist:
+                param_wordlist = wordlist
             else:
-                print(f"{Fore.CYAN}[*] SecLists not found. Using built-in wordlist: parameters.txt ({count} entries){Style.RESET_ALL}")
-        t0 = time.monotonic()
-        try:
-            from vortex.param_fuzzer import parameter_discovery
+                param_wordlist, from_seclists = get_wordlist_for_size('parameters', wordlist_size)
+                count = _count_lines(param_wordlist)
+                if from_seclists:
+                    relative = _SECLISTS_FILES['parameters'][wordlist_size]
+                    print(f"{Fore.CYAN}[*] Using SecLists ({wordlist_size}): {relative} ({count} entries){Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.CYAN}[*] SecLists not found. Using built-in wordlist: parameters.txt ({count} entries){Style.RESET_ALL}")
+            t0 = time.monotonic()
+            try:
+                from vortex.param_fuzzer import parameter_discovery
 
-            param_results: dict = await parameter_discovery(
-                url_list[0],
-                method,
-                headers,
-                param_wordlist,
-                output_file=None,
-                output_format=output_format,
-                max_threads=threads,
-                **common_kwargs,
-            ) or {}
-            all_results["params"] = param_results
-            _print_phase_summary("Parameters discovered", len(param_results), time.monotonic() - t0)
-        except Exception as exc:
-            logging.warning(f"Parameter fuzzing failed: {exc}")
-            print(f"{Fore.YELLOW}[⚠] Parameter fuzzing failed: {exc}. Continuing...{Style.RESET_ALL}")
-            failed_modules.append("params")
+                param_results: dict = await parameter_discovery(
+                    url_list[0],
+                    method,
+                    headers,
+                    param_wordlist,
+                    output_file=None,
+                    output_format=output_format,
+                    max_threads=threads,
+                    **common_kwargs,
+                ) or {}
+                all_results["params"] = param_results
+                _print_phase_summary("Parameters discovered", len(param_results), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"Parameter fuzzing failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] Parameter fuzzing failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("params")
     else:
         print(f"{Fore.YELLOW}[ℹ] No targets available — skipping parameter fuzzing.{Style.RESET_ALL}")
 
