@@ -21,6 +21,7 @@ async def harvest_emails(target_urls, depth=2, output_file=None, output_format='
     from vortex.user_agents import USER_AGENTS
 
     all_emails = set()
+    seen_emails = set()
 
     connector = aiohttp.TCPConnector(ssl=False)
     async with aiohttp.ClientSession(connector=connector) as session:
@@ -49,12 +50,22 @@ async def harvest_emails(target_urls, depth=2, output_file=None, output_format='
                     try:
                         async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout),
                                                ssl=False, headers=headers or None, **req_kwargs) as resp:
-                            html = await resp.text()
+                            content_type = resp.headers.get('Content-Type', '')
+                            if not content_type.startswith(('text/', 'application/json', 'application/javascript', 'application/xml', 'application/xhtml')):
+                                continue
+                            raw = await resp.read()
+                            encoding = resp.charset or 'utf-8'
+                            try:
+                                html = raw.decode(encoding)
+                            except (UnicodeDecodeError, LookupError):
+                                html = raw.decode('utf-8', errors='replace')
                             # Find emails in raw HTML
                             found = EMAIL_PATTERN.findall(html)
                             for email in found:
                                 all_emails.add(email)
-                                print(f"  {Fore.GREEN}[✔] {email}{Style.RESET_ALL}")
+                                if email not in seen_emails:
+                                    seen_emails.add(email)
+                                    print(f"  {Fore.GREEN}[✔] {email}{Style.RESET_ALL}")
 
                             # Follow internal links
                             soup = BeautifulSoup(html, 'html.parser')
@@ -64,6 +75,9 @@ async def harvest_emails(target_urls, depth=2, output_file=None, output_format='
                                     queue.add(full_url)
                     except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
                         logging.debug(f"Error harvesting {url}: {e}")
+                        continue
+                    except Exception as e:
+                        logging.warning(f"Failed to process {url}: {e}")
                         continue
 
                     if rate_limit:

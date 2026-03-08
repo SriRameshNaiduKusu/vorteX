@@ -50,7 +50,15 @@ async def crawl_domain(target_urls, depth, output_file=None, output_format="txt"
                     try:
                         async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout),
                                                ssl=False, headers=headers or None, **req_kwargs) as resp:
-                            html = await resp.text()
+                            content_type = resp.headers.get('Content-Type', '')
+                            if not content_type.startswith(('text/', 'application/json', 'application/javascript', 'application/xml', 'application/xhtml')):
+                                continue
+                            raw = await resp.read()
+                            encoding = resp.charset or 'utf-8'
+                            try:
+                                html = raw.decode(encoding)
+                            except (UnicodeDecodeError, LookupError):
+                                html = raw.decode('utf-8', errors='replace')
                             soup = BeautifulSoup(html, "html.parser")
 
                             for tag in soup.find_all("a", href=True):
@@ -66,6 +74,9 @@ async def crawl_domain(target_urls, depth, output_file=None, output_format="txt"
                                         queue.add(full_url)
                     except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
                         logging.debug(f"Error crawling {url}: {e}")
+                        continue
+                    except Exception as e:
+                        logging.warning(f"Failed to process {url}: {e}")
                         continue
 
                     if rate_limit:
