@@ -96,6 +96,10 @@ def main():
                         help="Scan for Local File Inclusion vulnerabilities")
     parser.add_argument("-ssti", "--ssti-scan", action="store_true",
                         help="Scan for SSTI (Server-Side Template Injection) vulnerabilities")
+    parser.add_argument("-xxe", "--xxe-scan", action="store_true",
+                        help="Scan for XXE (XML External Entity) injection vulnerabilities")
+    parser.add_argument("-crlf", "--crlf-scan", action="store_true",
+                        help="Scan for CRLF injection vulnerabilities")
     parser.add_argument("-bypass403", "--bypass-403", action="store_true",
                         help="Attempt 403 Forbidden bypass techniques")
     parser.add_argument("-waf", "--waf-detect", action="store_true",
@@ -124,7 +128,7 @@ def main():
     parser.add_argument("--skip", default="",
                         help="Comma-separated list of modules to skip during -all mode "
                              "(e.g., dns,ssl,ports,subdomains,fuzzing,tech,crawl,js,emails,params,"
-                             "ct,wayback,redirect,cors,takeover,waf,xss,sqli,ssrf,lfi,ssti,probe)")
+                             "ct,wayback,redirect,cors,takeover,waf,xss,sqli,ssrf,lfi,ssti,xxe,crlf,probe)")
     parser.add_argument("--max-probe-targets", type=int, default=5000,
                         help="Max live targets to forward after HTTP probing in -all mode [default: 5000]")
 
@@ -442,6 +446,26 @@ def main():
             print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
             sys.exit(1)
         asyncio.run(scan_ssti(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, fast=args.fast, **common_kwargs
+        ))
+
+    elif args.xxe_scan:
+        from vortex.xxe_scanner import scan_xxe
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(scan_xxe(
+            targets, output_file=args.output, output_format=args.format,
+            max_threads=args.threads, fast=args.fast, **common_kwargs
+        ))
+
+    elif args.crlf_scan:
+        from vortex.crlf_scanner import scan_crlf
+        if not targets:
+            print(f"{Fore.RED}[!] No targets specified. Use -url or pipe targets via stdin.{Style.RESET_ALL}")
+            sys.exit(1)
+        asyncio.run(scan_crlf(
             targets, output_file=args.output, output_format=args.format,
             max_threads=args.threads, fast=args.fast, **common_kwargs
         ))

