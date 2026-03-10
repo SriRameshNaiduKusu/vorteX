@@ -755,6 +755,52 @@ async def run_full_recon(
                 print(f"{Fore.YELLOW}[⚠] SSTI scan failed: {exc}. Continuing...{Style.RESET_ALL}")
                 failed_modules.append("ssti")
 
+    # XXE scanning
+    if active_url_list:
+        if "xxe" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping XXE scanning (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.xxe_scanner import scan_xxe
+
+                xxe_findings = await scan_xxe(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    fast=fast,
+                    **common_kwargs,
+                )
+                all_results["xxe"] = xxe_findings
+                _print_phase_summary("XXE scan", len(xxe_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"XXE scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] XXE scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("xxe")
+
+    # CRLF scanning
+    if active_url_list:
+        if "crlf" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping CRLF scanning (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.crlf_scanner import scan_crlf
+
+                crlf_findings = await scan_crlf(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    fast=fast,
+                    **common_kwargs,
+                )
+                all_results["crlf"] = crlf_findings
+                _print_phase_summary("CRLF scan", len(crlf_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"CRLF scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] CRLF scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("crlf")
+
     # ── Scan Summary ──────────────────────────────────────────────────────────
     scan_duration = time.monotonic() - scan_start
     _print_phase_banner("Scan Summary")
@@ -780,6 +826,8 @@ async def run_full_recon(
         "ssrf_findings": len(all_results.get("ssrf", [])),
         "lfi_findings": len(all_results.get("lfi", [])),
         "ssti_findings": len(all_results.get("ssti", [])),
+        "xxe_findings": len(all_results.get("xxe", [])),
+        "crlf_findings": len(all_results.get("crlf", [])),
         "scan_duration": _format_duration(scan_duration),
         "failed_modules": failed_modules,
     }
@@ -803,6 +851,8 @@ async def run_full_recon(
     print(f"{Fore.CYAN}  SSRF findings      : {summary['ssrf_findings']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  LFI findings       : {summary['lfi_findings']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  SSTI findings      : {summary['ssti_findings']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  XXE findings       : {summary['xxe_findings']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  CRLF findings      : {summary['crlf_findings']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  Scan duration      : {summary['scan_duration']}{Style.RESET_ALL}")
     if failed_modules:
         print(f"{Fore.YELLOW}  Failed modules     : {', '.join(failed_modules)}{Style.RESET_ALL}")
@@ -844,6 +894,8 @@ async def run_full_recon(
                 "ssrf": all_results.get("ssrf", []),
                 "lfi": all_results.get("lfi", []),
                 "ssti": all_results.get("ssti", []),
+                "xxe": all_results.get("xxe", []),
+                "crlf": all_results.get("crlf", []),
             },
             "summary": summary,
         }
