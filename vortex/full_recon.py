@@ -732,6 +732,29 @@ async def run_full_recon(
                 print(f"{Fore.YELLOW}[⚠] LFI scan failed: {exc}. Continuing...{Style.RESET_ALL}")
                 failed_modules.append("lfi")
 
+    # SSTI scanning
+    if active_url_list:
+        if "ssti" in skip_modules:
+            print(f"{Fore.CYAN}[ℹ] Skipping SSTI scan (--skip){Style.RESET_ALL}")
+        else:
+            t0 = time.monotonic()
+            try:
+                from vortex.ssti_scanner import scan_ssti
+
+                ssti_findings = await scan_ssti(
+                    active_url_list,
+                    output_file=None,
+                    output_format=output_format,
+                    fast=fast,
+                    **common_kwargs,
+                )
+                all_results["ssti"] = ssti_findings
+                _print_phase_summary("SSTI findings", len(ssti_findings), time.monotonic() - t0)
+            except Exception as exc:
+                logging.warning(f"SSTI scan failed: {exc}")
+                print(f"{Fore.YELLOW}[⚠] SSTI scan failed: {exc}. Continuing...{Style.RESET_ALL}")
+                failed_modules.append("ssti")
+
     # ── Scan Summary ──────────────────────────────────────────────────────────
     scan_duration = time.monotonic() - scan_start
     _print_phase_banner("Scan Summary")
@@ -756,6 +779,7 @@ async def run_full_recon(
         "sqli_findings": len(all_results.get("sqli", [])),
         "ssrf_findings": len(all_results.get("ssrf", [])),
         "lfi_findings": len(all_results.get("lfi", [])),
+        "ssti_findings": len(all_results.get("ssti", [])),
         "scan_duration": _format_duration(scan_duration),
         "failed_modules": failed_modules,
     }
@@ -778,6 +802,7 @@ async def run_full_recon(
     print(f"{Fore.CYAN}  SQLi findings      : {summary['sqli_findings']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  SSRF findings      : {summary['ssrf_findings']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  LFI findings       : {summary['lfi_findings']}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}  SSTI findings      : {summary['ssti_findings']}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}  Scan duration      : {summary['scan_duration']}{Style.RESET_ALL}")
     if failed_modules:
         print(f"{Fore.YELLOW}  Failed modules     : {', '.join(failed_modules)}{Style.RESET_ALL}")
@@ -818,6 +843,7 @@ async def run_full_recon(
                 "sqli": all_results.get("sqli", []),
                 "ssrf": all_results.get("ssrf", []),
                 "lfi": all_results.get("lfi", []),
+                "ssti": all_results.get("ssti", []),
             },
             "summary": summary,
         }
