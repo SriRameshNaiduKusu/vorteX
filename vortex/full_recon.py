@@ -308,7 +308,7 @@ async def run_full_recon(
         try:
             from vortex.crawler import crawl_domain
 
-            await crawl_domain(url_list, depth, output_file=None, output_format=output_format, **common_kwargs)
+            await crawl_domain(url_list, depth, output_file=None, output_format=output_format, max_threads=threads, **common_kwargs)
             all_results["crawl"] = {}
             _print_phase_summary("Crawl targets processed", len(url_list), time.monotonic() - t0)
         except Exception as exc:
@@ -324,7 +324,7 @@ async def run_full_recon(
         try:
             from vortex.js_discovery import discover_js_links
 
-            await discover_js_links(url_list, depth, output_file=None, output_format=output_format, **common_kwargs)
+            await discover_js_links(url_list, depth, output_file=None, output_format=output_format, max_threads=threads, **common_kwargs)
             all_results["js"] = {}
             _print_phase_summary("JS discovery targets", len(url_list), time.monotonic() - t0)
         except Exception as exc:
