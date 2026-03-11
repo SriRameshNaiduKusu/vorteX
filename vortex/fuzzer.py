@@ -236,6 +236,9 @@ async def fetch_directory(url, session, sem, proxy=None, timeout=10, random_ua=F
                 if needs_body:
                     body = await resp.read()
                     body_size = len(body)
+                    body_text = body.decode("utf-8", errors="replace")
+                    word_count = len(body_text.split())
+                    line_count = body_text.count("\n") + 1
 
                     # Wildcard / soft-404 check.
                     if is_wildcard_host and status == 200:
@@ -245,12 +248,6 @@ async def fetch_directory(url, session, sem, proxy=None, timeout=10, random_ua=F
                                 f"({status}, {body_size}B ≈ {baseline_length}B baseline)"
                             )
                             return None
-
-                    # Body-content filters (words / lines) require decoding.
-                    if filter_words or filter_lines:
-                        body_text = body.decode("utf-8", errors="replace")
-                        word_count = len(body_text.split())
-                        line_count = body_text.count("\n") + 1
 
                     # Apply size filter.
                     if filter_size and body_size in filter_size:

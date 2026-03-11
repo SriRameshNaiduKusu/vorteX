@@ -232,6 +232,11 @@ def main():
             fast=args.fast,
             skip=args.skip,
             max_probe_targets=args.max_probe_targets,
+            filter_size=filter_size,
+            filter_words=filter_words,
+            filter_lines=filter_lines,
+            filter_codes=filter_codes,
+            auto_calibrate=args.auto_calibrate,
         ))
 
     elif args.domain and not any([args.dns_enum, args.ssl_check, args.port_scan]):
