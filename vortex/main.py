@@ -131,10 +131,49 @@ def main():
                              "ct,wayback,redirect,cors,takeover,waf,xss,sqli,ssrf,lfi,ssti,xxe,crlf,probe)")
     parser.add_argument("--max-probe-targets", type=int, default=5000,
                         help="Max live targets to forward after HTTP probing in -all mode [default: 5000]")
+    parser.add_argument(
+        "-fs", "--filter-size",
+        help="Filter out responses with the specified body size in bytes (comma-separated, e.g. '12438' or '12438,5000')",
+    )
+    parser.add_argument(
+        "-fw", "--filter-words",
+        help="Filter out responses with the specified word count (comma-separated)",
+    )
+    parser.add_argument(
+        "-fl", "--filter-lines",
+        help="Filter out responses with the specified line count (comma-separated)",
+    )
+    parser.add_argument(
+        "-fc", "--filter-code",
+        help="Filter out responses with the specified HTTP status code(s) (comma-separated, e.g. '404,403')",
+    )
+    parser.add_argument(
+        "-ac", "--auto-calibrate", action="store_true",
+        help="Automatically calibrate response filters by sending random probe requests before scanning",
+    )
 
     args = parser.parse_args()
 
     setup_logging(args.verbose)
+
+    # Parse comma-separated filter values into sets of integers.
+    def _parse_int_set(value: str | None, param_name: str = "filter") -> set[int] | None:
+        if not value:
+            return None
+        result = set()
+        for part in value.split(","):
+            part = part.strip()
+            if part:
+                try:
+                    result.add(int(part))
+                except ValueError:
+                    print(f"{Fore.YELLOW}[!] Ignoring non-integer {param_name} value: '{part}'{Style.RESET_ALL}")
+        return result or None
+
+    filter_size = _parse_int_set(args.filter_size, "--filter-size")
+    filter_words = _parse_int_set(args.filter_words, "--filter-words")
+    filter_lines = _parse_int_set(args.filter_lines, "--filter-lines")
+    filter_codes = _parse_int_set(args.filter_code, "--filter-code")
 
     targets = []
     if not sys.stdin.isatty():
@@ -215,7 +254,13 @@ def main():
             sys.exit(1)
         found_urls = asyncio.run(directory_fuzzing(
             targets, wordlist, args.threads, args.output,
-            output_format=args.format, **common_kwargs
+            output_format=args.format,
+            filter_size=filter_size,
+            filter_words=filter_words,
+            filter_lines=filter_lines,
+            filter_codes=filter_codes,
+            auto_calibrate=args.auto_calibrate,
+            **common_kwargs
         ))
         if args.fingerprint and found_urls:
             from vortex.tech_fingerprinting import fingerprint_technologies
