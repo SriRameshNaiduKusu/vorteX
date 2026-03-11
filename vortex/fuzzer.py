@@ -75,14 +75,84 @@ async def _detect_wildcard(session, base_url, timeout_obj, proxy=None, random_ua
     return False, 0, 0
 
 
+async def _auto_calibrate(session, base_url, timeout_obj, proxy=None, random_ua=False):
+    """Send 3 random probe requests to *base_url* and derive filter values.
+
+    Used when ``--auto-calibrate`` is requested.  Sends three gibberish-path
+    GET requests and inspects body size, word count, and line count.  If all
+    three probes return HTTP 200 with consistent responses, the baseline values
+    are returned so the caller can build filter sets automatically.
+
+    Returns:
+        A dict with keys ``'sizes'``, ``'words'``, ``'lines'`` (each a ``set``
+        of ints) when calibration succeeds, or ``None`` on failure / inconsistent
+        probes.
+    """
+    req_kwargs = {}
+    if proxy:
+        req_kwargs["proxy"] = proxy
+    headers = {}
+    if random_ua:
+        headers["User-Agent"] = random.choice(USER_AGENTS)
+
+    probe_paths = [f"vortex-probe-{_random_path(10)}" for _ in range(3)]
+
+    sizes = []
+    word_counts = []
+    line_counts = []
+
+    for path in probe_paths:
+        probe_url = f"{base_url.rstrip('/')}/{path}"
+        try:
+            async with session.get(
+                probe_url,
+                timeout=timeout_obj,
+                ssl=False,
+                headers=headers or None,
+                allow_redirects=True,
+                **req_kwargs,
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                body = await resp.read()
+                body_text = body.decode("utf-8", errors="replace")
+                sizes.append(len(body))
+                word_counts.append(len(body_text.split()))
+                line_counts.append(body_text.count("\n") + 1)
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as exc:
+            logging.debug(f"Auto-calibrate probe error for {probe_url}: {exc}")
+            return None
+
+    if len(sizes) != 3:
+        return None
+
+    # Only auto-filter if all three probes agree within tolerance.
+    if (
+        max(sizes) - min(sizes) <= _WILDCARD_TOLERANCE
+        and max(word_counts) - min(word_counts) <= 5
+        and max(line_counts) - min(line_counts) <= 2
+    ):
+        # Use the median (middle) value for each metric.
+        sorted_sizes = sorted(sizes)
+        sorted_words = sorted(word_counts)
+        sorted_lines = sorted(line_counts)
+        return {
+            "sizes": {sorted_sizes[1]},
+            "words": {sorted_words[1]},
+            "lines": {sorted_lines[1]},
+        }
+
+    return None
+
+
 async def fetch_directory(url, session, sem, proxy=None, timeout=10, random_ua=False,
-                          client_timeout=None, wildcard_hosts=None):
+                          client_timeout=None, wildcard_hosts=None,
+                          filter_size=None, filter_words=None,
+                          filter_lines=None, filter_codes=None):
     """Fetch a single directory probe URL.
 
-    Uses HEAD for non-wildcard hosts (faster — no body transfer).  Falls back to
-    GET when the server responds with 405 Method Not Allowed.  For wildcard hosts
-    a GET is always used so the response body length can be compared against the
-    baseline captured during wildcard detection.
+    Uses GET for all requests so filters and wildcard detection can inspect the
+    response body when needed.
 
     Args:
         url: Full URL to probe.
@@ -96,12 +166,22 @@ async def fetch_directory(url, session, sem, proxy=None, timeout=10, random_ua=F
         wildcard_hosts: Mapping of ``base_url → (baseline_status, baseline_length)``
             produced by the wildcard-detection phase.  When ``None`` no soft-404
             filtering is applied.
+        filter_size: Set of body sizes (bytes) to filter out.
+        filter_words: Set of word counts to filter out.
+        filter_lines: Set of line counts to filter out.
+        filter_codes: Set of HTTP status codes to filter out.
 
     Returns:
-        ``(url, status)`` tuple on a genuine hit, ``None`` otherwise.
+        ``(url, status, body_size, word_count, line_count)`` tuple on a genuine
+        hit, ``None`` otherwise.
     """
     if client_timeout is None:
         client_timeout = aiohttp.ClientTimeout(total=timeout)
+
+    # Determine whether any body-based processing is required.
+    needs_body = bool(
+        wildcard_hosts or filter_size or filter_words or filter_lines
+    )
 
     async with sem:
         if stop_event.is_set():
@@ -138,27 +218,58 @@ async def fetch_directory(url, session, sem, proxy=None, timeout=10, random_ua=F
                 **req_kwargs,
             ) as resp:
                 status = resp.status
-                if status not in (200, 301, 302, 403):
-                    # Release body without reading it.
+
+                # Apply status-code filter before reading the body.
+                if filter_codes and status in filter_codes:
+                    logging.debug(f"[filter-code] {url} ({status})")
                     await resp.release()
                     return None
 
-                if is_wildcard_host and status == 200:
-                    # Read body to compare length against the wildcard baseline.
+                if status not in (200, 301, 302, 403):
+                    await resp.release()
+                    return None
+
+                body_size = 0
+                word_count = 0
+                line_count = 0
+
+                if needs_body:
                     body = await resp.read()
-                    body_len = len(body)
-                    if abs(body_len - baseline_length) <= _WILDCARD_TOLERANCE:
-                        # Soft-404 — suppress.
-                        logging.debug(
-                            f"[wildcard-filtered] {url} "
-                            f"({status}, {body_len}B ≈ {baseline_length}B baseline)"
-                        )
+                    body_size = len(body)
+
+                    # Wildcard / soft-404 check.
+                    if is_wildcard_host and status == 200:
+                        if abs(body_size - baseline_length) <= _WILDCARD_TOLERANCE:
+                            logging.debug(
+                                f"[wildcard-filtered] {url} "
+                                f"({status}, {body_size}B ≈ {baseline_length}B baseline)"
+                            )
+                            return None
+
+                    # Body-content filters (words / lines) require decoding.
+                    if filter_words or filter_lines:
+                        body_text = body.decode("utf-8", errors="replace")
+                        word_count = len(body_text.split())
+                        line_count = body_text.count("\n") + 1
+
+                    # Apply size filter.
+                    if filter_size and body_size in filter_size:
+                        logging.debug(f"[filter-size] {url} ({body_size}B)")
+                        return None
+
+                    # Apply word-count filter.
+                    if filter_words and word_count in filter_words:
+                        logging.debug(f"[filter-words] {url} ({word_count} words)")
+                        return None
+
+                    # Apply line-count filter.
+                    if filter_lines and line_count in filter_lines:
+                        logging.debug(f"[filter-lines] {url} ({line_count} lines)")
                         return None
                 else:
-                    # Don't need the body — release it to avoid memory overhead.
                     await resp.release()
 
-                return url, status
+                return url, status, body_size, word_count, line_count
         except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as exc:
             logging.debug(f"Error fetching {url}: {exc}")
             return None
@@ -166,7 +277,10 @@ async def fetch_directory(url, session, sem, proxy=None, timeout=10, random_ua=F
 
 async def directory_fuzzing(base_urls, wordlist, max_threads, output_file,
                              output_format="txt", proxy=None, timeout=10,
-                             random_ua=False, rate_limit=None):
+                             random_ua=False, rate_limit=None,
+                             filter_size=None, filter_words=None,
+                             filter_lines=None, filter_codes=None,
+                             auto_calibrate=False):
     display_banner()
     print(f"{Fore.CYAN}[*] Fuzzing directories on {len(base_urls)} target(s)...{Style.RESET_ALL}")
 
@@ -190,12 +304,23 @@ async def directory_fuzzing(base_urls, wordlist, max_threads, output_file,
             f"{Fore.CYAN}[ℹ] Tip: Use --fast for quicker scans, or --skip fuzz to skip fuzzing.{Style.RESET_ALL}"
         )
 
+    # Announce active manual filters so the user knows what's being excluded.
+    if filter_size:
+        print(f"{Fore.CYAN}[ℹ] Filter — size: {sorted(filter_size)}{Style.RESET_ALL}")
+    if filter_words:
+        print(f"{Fore.CYAN}[ℹ] Filter — words: {sorted(filter_words)}{Style.RESET_ALL}")
+    if filter_lines:
+        print(f"{Fore.CYAN}[ℹ] Filter — lines: {sorted(filter_lines)}{Style.RESET_ALL}")
+    if filter_codes:
+        print(f"{Fore.CYAN}[ℹ] Filter — codes: {sorted(filter_codes)}{Style.RESET_ALL}")
+
     sem = asyncio.Semaphore(max_threads)
     # Create one ClientTimeout object and reuse it for every request.
     client_timeout = aiohttp.ClientTimeout(total=timeout)
 
     results = []
     found_urls = []
+    filtered_count = 0
     start_time = time.monotonic()
 
     connector = aiohttp.TCPConnector(limit=max_threads, ssl=False)
@@ -203,6 +328,32 @@ async def directory_fuzzing(base_urls, wordlist, max_threads, output_file,
 
         # ── Phase 0: wildcard / soft-404 detection ───────────────────────────
         unique_base_urls = list({base_url.rstrip("/") for base_url in base_urls})
+
+        # Auto-calibrate: send 3 random probes to derive filter values.
+        if auto_calibrate:
+            print(
+                f"{Fore.CYAN}[*] Auto-calibrating filters on {len(unique_base_urls)} host(s)...{Style.RESET_ALL}"
+            )
+            for base in unique_base_urls:
+                cal = await _auto_calibrate(
+                    session, base, client_timeout, proxy=proxy, random_ua=random_ua
+                )
+                if cal:
+                    # Merge calibrated values into the active filter sets.
+                    filter_size = (filter_size or set()) | cal["sizes"]
+                    filter_words = (filter_words or set()) | cal["words"]
+                    filter_lines = (filter_lines or set()) | cal["lines"]
+                    tqdm.write(
+                        f"{Fore.YELLOW}[⚠] Auto-calibrated {base}: "
+                        f"size={sorted(cal['sizes'])} "
+                        f"words={sorted(cal['words'])} "
+                        f"lines={sorted(cal['lines'])}{Style.RESET_ALL}"
+                    )
+                else:
+                    tqdm.write(
+                        f"{Fore.GREEN}[✔] Auto-calibrate: {base} — no consistent baseline detected.{Style.RESET_ALL}"
+                    )
+
         print(
             f"{Fore.CYAN}[*] Running wildcard detection on {len(unique_base_urls)} host(s)...{Style.RESET_ALL}"
         )
@@ -234,6 +385,10 @@ async def directory_fuzzing(base_urls, wordlist, max_threads, output_file,
         else:
             print(f"{Fore.GREEN}[✔] No wildcard hosts detected.{Style.RESET_ALL}")
 
+        any_filter_active = bool(
+            wildcard_hosts or filter_size or filter_words or filter_lines or filter_codes
+        )
+
         # ── Phase 1: directory fuzzing ────────────────────────────────────────
         with tqdm(total=total, desc="Fuzzing", ncols=80) as bar:
             tasks = [
@@ -241,6 +396,8 @@ async def directory_fuzzing(base_urls, wordlist, max_threads, output_file,
                     url, session, sem,
                     proxy=proxy, timeout=timeout, random_ua=random_ua,
                     client_timeout=client_timeout, wildcard_hosts=wildcard_hosts,
+                    filter_size=filter_size, filter_words=filter_words,
+                    filter_lines=filter_lines, filter_codes=filter_codes,
                 )
                 for url in all_urls_to_fuzz
             ]
@@ -249,19 +406,23 @@ async def directory_fuzzing(base_urls, wordlist, max_threads, output_file,
                     break
                 result = await coro
                 if result:
-                    url, status = result
-                    tqdm.write(f"{Fore.GREEN}[✔] Found: {url} ({status}){Style.RESET_ALL}")
+                    url, status, body_size, word_count, line_count = result
+                    if any_filter_active:
+                        tqdm.write(
+                            f"{Fore.GREEN}[✔] Found: {url} ({status}) "
+                            f"[size:{body_size} words:{word_count} lines:{line_count}]{Style.RESET_ALL}"
+                        )
+                    else:
+                        tqdm.write(f"{Fore.GREEN}[✔] Found: {url} ({status}){Style.RESET_ALL}")
                     results.append({"url": url, "status": status})
                     found_urls.append(url)
+                else:
+                    # Count filtered/suppressed responses.
+                    filtered_count += 1
                 bar.update(1)
                 if rate_limit:
                     await asyncio.sleep(1.0 / rate_limit)
 
-    # Derive filtered count from total processed minus genuine hits.
-    # We count how many 200-responses were suppressed by comparing found vs
-    # what an unfiltered run would have produced.  The simplest proxy is just
-    # to track it inside fetch_directory; but to keep the function return type
-    # unchanged we compute an approximation here.
     elapsed = time.monotonic() - start_time
     elapsed_str = (
         f"{int(elapsed // 60)}m {int(elapsed % 60)}s"
@@ -276,6 +437,7 @@ async def directory_fuzzing(base_urls, wordlist, max_threads, output_file,
     )
     print(
         f"{Fore.GREEN}[✔] Found: {len(found_urls)} valid result(s) | "
+        f"Filtered: {filtered_count} | "
         f"Wildcard hosts: {len(wildcard_hosts)}/{len(unique_base_urls)}{Style.RESET_ALL}"
     )
 
