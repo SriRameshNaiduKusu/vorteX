@@ -238,6 +238,33 @@ def test_filter_size_passes_non_matching_response():
     asyncio.run(run())
 
 
+def test_word_line_counts_computed_with_only_filter_size():
+    """word_count and line_count should be non-zero when only filter_size is active."""
+    async def run():
+        from vortex.fuzzer import fetch_directory
+        import aiohttp
+
+        # Body has 4 words and 2 lines; size (17 bytes) does NOT match filter_size.
+        body = b"hello world\nfoo bar"
+        mock_session = _make_get_mock(200, body)
+        sem = asyncio.Semaphore(1)
+        timeout_obj = aiohttp.ClientTimeout(total=5)
+        result = await fetch_directory(
+            'http://example.com/path',
+            mock_session,
+            sem,
+            client_timeout=timeout_obj,
+            filter_size={99999},  # does not match → response should pass through
+        )
+        assert result is not None
+        url, status, body_size, word_count, line_count = result
+        assert body_size == len(body)
+        assert word_count == 4
+        assert line_count == 2
+
+    asyncio.run(run())
+
+
 def test_filter_words_filters_matching_response():
     """A response whose word count is in filter_words should be suppressed."""
     async def run():

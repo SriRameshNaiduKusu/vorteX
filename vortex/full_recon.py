@@ -61,6 +61,11 @@ async def run_full_recon(
     fast=False,
     skip='',
     max_probe_targets=5000,
+    filter_size=None,
+    filter_words=None,
+    filter_lines=None,
+    filter_codes=None,
+    auto_calibrate=False,
 ):
     """Run all recon modules sequentially, feeding results forward."""
     scan_start = time.monotonic()
@@ -259,6 +264,11 @@ async def run_full_recon(
                     threads,
                     output_file=None,
                     output_format=output_format,
+                    filter_size=filter_size,
+                    filter_words=filter_words,
+                    filter_lines=filter_lines,
+                    filter_codes=filter_codes,
+                    auto_calibrate=auto_calibrate,
                     **common_kwargs,
                 )
                 all_discovered_urls.update(fuzzed_urls)
